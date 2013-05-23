@@ -28,10 +28,10 @@ the features are the minimum I need for my own needs. You've been warned!
 
 
 **Requires**
+
+  * [NumPy](http://www.numpy.org/)
+  * [CUDA](http://www.nvidia.com/object/cuda_home_new.html)
+  * [Theano](http://deeplearning.net/software/theano/)
+  * [PyCUDA](http://documen.tician.de/pycuda/)
+  * [scikits.cuda](http://lebedov.github.com/scikits.cuda/) 
   
-  * CUDA
-  * Theano
-  * PyCUDA
-  * scikits.cuda 
-  * NumPy
-  * SciPy
