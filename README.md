@@ -1,4 +1,4 @@
-Striate. 
+Striate
 =========
 A simple implementation of a Convolutional Neural Network which is based on (and extends) the [LeNet5 implementation](http://deeplearning.net/tutorial/lenet.html) in Theano's tutorial. 
 Though most of the code runs on the GPU (thanks Theano & PyCUDA!), it's still not nearly as fast as you could make it with hand-rolled kernels. Also, the provided training algorithm is just mini-batch 
