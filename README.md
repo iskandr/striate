@@ -14,11 +14,13 @@ the features are the minimum I need for my own needs. You've been warned!
 
     from striate import ConvNet
     net = ConvNet(input_size = [32, 32], 
-                          n_colors = 3, 
-                          n_filters = [64, 128], 
-                          n_hidden = [300, 200, 150],
-                          n_out = 100,
-                          learning_rate = 0.1)
+                  n_colors = 3, 
+                  n_filters = [64, 128], 
+                  n_hidden = [300, 200, 150],
+                  n_out = 100,
+                  learning_rate = 0.1, 
+                  momentum = 0.05, 
+                  conv_activation = 'relu')
     net.fit(Xtrain, Ytrain)
     print "Accuracy:", net.score(Xtest, Ytest)
 
