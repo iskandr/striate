@@ -1,16 +1,29 @@
-
-
 import numpy as np
+
 import theano
 import theano.tensor as T 
+from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 
+from theano.sandbox.cuda import CudaNdarray
 
-from helpers import rng 
+import pycuda 
+import pycuda.autoinit
+import pycuda.curandom 
+from pycuda.gpuarray import GPUArray 
+
+from mlp import HiddenLayer
+from logistic_sgd import LogisticRegression 
+from conv_pool_layer import ConvPoolLayer 
+from params_list import ParamsList 
+
+
+rng = np.random.RandomState(23455)
+
 
 class ConvNet(object): 
   def __init__(self,  
                      mini_batch_size, 
                      learning_rate, 
-                     momentum, 
+                     momentum = 0.0, 
                      n_out = 10, 
                      input_height = 32, 
                      input_width = 32, 
@@ -121,26 +134,7 @@ class ConvNet(object):
       old_value = p.get_value(borrow = True)
       old_value += dx 
       p.set_value(old_value, borrow=True)
-   
-  def add_array_to_weights(self, dxs):
-   """
-   Given a long weight vector, split it apart and each component to its layers' weights
-   """
-   curr_idx = 0
-   for p in self.params:
-     w = p.get_value(borrow=True, return_internal_type=True)
-     if isinstance(w, (GPUArray, np.ndarray)):
-       nelts = w.size
-       w_flat = w.ravel()
-       w_flat += dxs[curr_idx:curr_idx+nelts]
-       assert w_flat.strides == dxs.strides
-       assert w.ctypes.data == w_flat.ctypes.data 
-       p.set_value(w, borrow=True)
-     else:
-       assert np.isscalar(w)
-       nelts = 1 
-       p.set_value(w + dxs[curr_idx])
-     curr_idx += nelts 
+
 
   def set_weights(self, new_w):
     curr_idx = 0
@@ -159,16 +153,6 @@ class ConvNet(object):
       curr_idx += nelts 
     assert curr_idx == len(new_w)
   
-  def local_update_step_with_momentum(self, grads, old_dxs):
-    new_dxs = []
-    for (g, old_dx) in zip(grads, old_dxs):
-      new_dx = np.array(g) 
-      new_dx *= -self.learning_rate 
-      old_dx *= self.momentum 
-      new_dx += old_dx 
-      new_dxs.append(new_dx)
-    self.add_list_to_weights(new_dxs)
-    return new_dxs 
 
   def get_gradients_list(self, xslice, yslice):
     return [to_gpuarray(g_elt, copyif=True)
@@ -228,7 +212,6 @@ class ConvNet(object):
     """
     g_sum = ParamsList(copy_first=False)
     def fn(xslice, yslice):
-        
       if average:
         g_list = self.bprop_update_return_grads(xslice, yslice)
         g_sum.iadd(g_list)

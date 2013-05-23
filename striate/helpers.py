@@ -3,8 +3,6 @@ import pycuda
 import pycuda.autoinit
 from pycuda.gpuarray import GPUArray 
 
-rng = numpy.random.RandomState(23455)
-
 def gpu_copy(x):
   y = pycuda.gpuarray.empty_like(x)
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
