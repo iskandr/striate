@@ -3,6 +3,7 @@ The irregular collection of network parameters stored as
 a list of GPU arrays and scalars 
 """  
 
+import numpy as np 
 
 import theano.sandbox.cuda
 from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 

@@ -206,13 +206,18 @@ class ConvNet(object):
     errs = self.for_each_slice(x,y,self.test_model)
     return np.mean(errs)
     
-  def update_batches(self, x, y, average=False):
+  def predict(self, x):
+    assert False, "Not yet implemented" 
+    batch_outputs = self.for_each_slice(x, y = None, self.fprop)
+    return np.array(batch_outputs)
+
+  def fit(self, x, y, return_average_gradient=False):
     """
     Returns list containing most recent gradients
     """
     g_sum = ParamsList(copy_first=False)
     def fn(xslice, yslice):
-      if average:
+      if return_average_gradient:
         g_list = self.bprop_update_return_grads(xslice, yslice)
         g_sum.iadd(g_list)
         del g_list 
@@ -220,7 +225,7 @@ class ConvNet(object):
         self.bprop_update_return_cost(xslice, yslice)
     self.for_each_slice(x, y, fn)
 
-    if average:
+    if return_average_gradient:
       g = g_sum.flatten() 
       g *= (1.0 / g_sum.n_updates)
       return g 
