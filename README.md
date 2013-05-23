@@ -18,3 +18,16 @@ the features are the minimum I need for my own needs. You've been warned!
   * NumPy
   * SciPy
 
+**Usage**
+
+    import striate
+    net = striate.ConvNet(input_size = [32, 32], 
+                          n_colors = 3, 
+                          n_filters = [64, 128], 
+                          n_hidden = [300, 200, 150],
+                          n_out = 100,
+                          learning_rate = 0.1)
+    net.fit(Xtrain, Ytrain)
+    print "Accuracy:", net.score(Xtest, Ytest)
+
+
