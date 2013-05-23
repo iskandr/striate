@@ -9,19 +9,11 @@ the features are the minimum I need for my own needs. You've been warned!
 
 * If you want to know about convolutional neural networks, go talk to [Yann LeCun](http://yann.lecun.com/). 
 
-**Requires**
-  
-  * CUDA
-  * Theano
-  * PyCUDA
-  * scikits.cuda 
-  * NumPy
-  * SciPy
 
 **Usage**
 
-    import striate
-    net = striate.ConvNet(input_size = [32, 32], 
+    from striate import ConvNet
+    net = ConvNet(input_size = [32, 32], 
                           n_colors = 3, 
                           n_filters = [64, 128], 
                           n_hidden = [300, 200, 150],
@@ -31,3 +23,13 @@ the features are the minimum I need for my own needs. You've been warned!
     print "Accuracy:", net.score(Xtest, Ytest)
 
 
+
+
+**Requires**
+  
+  * CUDA
+  * Theano
+  * PyCUDA
+  * scikits.cuda 
+  * NumPy
+  * SciPy
