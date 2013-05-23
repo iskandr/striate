@@ -9,12 +9,29 @@ the features are the minimum I need for my own needs. You've been warned!
 
 * If you want to know about convolutional neural networks, go talk to [Yann LeCun](http://yann.lecun.com/). 
 
-**Requires**
-  
-  * CUDA
-  * Theano
-  * PyCUDA
-  * scikits.cuda 
-  * NumPy
-  * SciPy
 
+**Usage**
+
+    from striate import ConvNet
+    net = ConvNet(input_size = [32, 32], 
+                  n_colors = 3, 
+                  n_filters = [64, 128], 
+                  n_hidden = [300, 200, 150],
+                  n_out = 100,
+                  learning_rate = 0.1, 
+                  momentum = 0.05, 
+                  conv_activation = 'relu')
+    net.fit(Xtrain, Ytrain)
+    print "Accuracy:", net.score(Xtest, Ytest)
+
+
+
+
+**Requires**
+
+  * [NumPy](http://www.numpy.org/)
+  * [CUDA](http://www.nvidia.com/object/cuda_home_new.html)
+  * [Theano](http://deeplearning.net/software/theano/)
+  * [PyCUDA](http://documen.tician.de/pycuda/)
+  * [scikits.cuda](http://lebedov.github.com/scikits.cuda/) 
+  
