@@ -8,7 +8,7 @@ import sys
 extension_modules = []
 setup(
     name="striate",
-    description="Convolutional neural networks in Python"
+    description="Convolutional neural networks in Python", 
     long_description='''
 Striate. 
 =========
@@ -29,8 +29,6 @@ the features are the minimum I need for my own needs. You've been warned!
   * scikits.cuda 
   * NumPy
   * SciPy
-
-
 ''',
     classifiers=['Development Status :: 3 - Alpha',
 		 'Topic :: Scientific/Engineering :: Artificial Intelligence'                 
@@ -42,8 +40,8 @@ the features are the minimum I need for my own needs. You've been warned!
     author_email="alexr@cs.nyu.edu",
     license="BSD",
     version="0.1",
-    url="http://github.com/iskandr/convnet",
-    packages=[ 'convnet' ],
+    url="http://github.com/iskandr/striate",
+    packages=[ 'striate' ],
     package_dir={ '' : '.' },
     requires=[
       'pycuda', 

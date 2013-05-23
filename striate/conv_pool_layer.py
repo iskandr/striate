@@ -11,6 +11,8 @@ from theano.tensor.nnet import conv
 from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 
 from theano.sandbox.cuda import CudaNdarray
 
+import pycuda
+import pycuda.autoinit 
 
 class ConvPoolLayer(object):
     """Pool Layer of a convolutional network """
