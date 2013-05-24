@@ -28,9 +28,14 @@ import sys
 import time
 
 import numpy
-
+import numpy as np 
 import theano
 import theano.tensor as T
+from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 
+from theano.sandbox.cuda import CudaNdarray
+
+import pycuda 
+import pycuda.autoinit 
 
 
 from logistic_sgd import LogisticRegression, load_data
@@ -79,18 +84,22 @@ class HiddenLayer(object):
         #        We have no info for other function, so we use the same as
         #        tanh.
         if W is None:
-            W_values = numpy.asarray(rng.uniform(
-                    low=-numpy.sqrt(6. / (n_in + n_out)),
-                    high=numpy.sqrt(6. / (n_in + n_out)),
-                    size=(n_in, n_out)), dtype=theano.config.floatX)
+            W_bound = np.sqrt(6. / (n_in + n_out))
+            float_t = getattr(np, theano.config.floatX)
+            W_init = pycuda.curandom.rand(shape=(n_in, n_out), dtype=float_t)
+           
+            W_init *= (2*W_bound)
+            W_init -= W_bound 
+            W_init = to_cudandarray(W_init)
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
 
-            W = theano.shared(value=W_values, name='W', borrow=True)
+            W = theano.shared(value=W_init, name='W', borrow=True)
 
         if b is None:
-            b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
-            b = theano.shared(value=b_values, name='b', borrow=True)
+          b_init = pycuda.gpuarray.zeros((n_out,), dtype = theano.config.floatX)
+          b_init = to_cudandarray(b_init)  
+          b = theano.shared(value=b_init, name='b', borrow=True)
 
         self.W = W
         self.b = b

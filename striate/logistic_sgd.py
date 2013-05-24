@@ -1,5 +1,6 @@
 """
-Copied directly from Theano's LeNet5 tutorial
+Copied directly from Theano's LeNet5 tutorial, 
+Modified to use GPUArrays 
 ----------------------------------------------
 
 This tutorial introduces logistic regression using Theano and stochastic
@@ -48,7 +49,10 @@ import numpy
 
 import theano
 import theano.tensor as T
-
+from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 
+from theano.sandbox.cuda import CudaNdarray
+import pycuda
+import pycuda.autoinit 
 
 class LogisticRegression(object):
     """Multi-class Logistic Regression Class
@@ -77,13 +81,14 @@ class LogisticRegression(object):
         """
 
         # initialize with 0 the weights W as a matrix of shape (n_in, n_out)
-        self.W = theano.shared(value=numpy.zeros((n_in, n_out),
-                                                 dtype=theano.config.floatX),
-                                name='W', borrow=True)
+        W_init = pycuda.gpuarray.zeros((n_in, n_out), dtype = theano.config.floatX)
+        W_init = to_cudandarray(W_init)
+        self.W = theano.shared(value=W_init, name='W', borrow=True)
+
         # initialize the baises b as a vector of n_out 0s
-        self.b = theano.shared(value=numpy.zeros((n_out,),
-                                                 dtype=theano.config.floatX),
-                               name='b', borrow=True)
+        b_init = pycuda.gpuarray.zeros((n_out,), dtype = theano.config.floatX)
+        b_init = to_cudandarray(b_init)
+        self.b = theano.shared(value=b_init, name='b', borrow=True)
 
         # compute vector of class-membership probabilities in symbolic form
         self.p_y_given_x = T.nnet.softmax(T.dot(input, self.W) + self.b)
