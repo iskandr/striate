@@ -24,15 +24,14 @@ class ConvNet(object):
                      mini_batch_size, 
                      learning_rate, 
                      momentum = 0.0, 
-                     n_out = 10, 
-                     input_height = 32, 
-                     input_width = 32, 
+                     input_size = (32,32),
                      n_colors = 3, 
+                     n_out = 10, 
+                     n_filters = (64, 64), 
                      filter_size = (5,5),
                      pool_size = (2,2), 
-                     conv_activation = 'relu',
-                     n_filters = [64, 64], 
-                     n_hidden = [200, 100, 50, 25]): 
+                     conv_activation = 'relu', 
+                     n_hidden = (200, 100, 50, 25)): 
     
     self.mini_batch_size = mini_batch_size  
     self.momentum = momentum 
@@ -48,15 +47,37 @@ class ConvNet(object):
     ######################
     print '  >> Building model: mini_batch_size = %d, learning_rate = %s, momentum = %s, n_filters = %s' % (mini_batch_size, learning_rate, momentum, n_filters)
 
+    input_height, input_width = input_size 
+    pool_height, pool_width = pool_size
+    filter_height, filter_width = filter_size 
+    last_output_shape = (mini_batch_size, n_colors, input_height, input_width)
+    
     # Reshape matrix of rasterized images 
-    # to a 4D tensor, compatible with our LeNetConvPoolLayer
-    conv0_input = x.reshape((mini_batch_size, n_colors, input_height, input_width))
+    # to a 4D tensor, compatible with our LConvPoolLayer
+    last_output = x.reshape(last_output_shape)
+    
     # Construct the first convolutional pooling layer:
     # filtering reduces the image size to (28-5+1,28-5+1)=(24,24)
     # maxpooling reduces this further to (24/2,24/2) = (12,12)
     # 4D output tensor is thus of shape (batch_size,nkerns[0],12,12)
-    pool_size = (2,2)
-    filter_size = (5,5) 
+    
+    conv_layers = []
+    for n in n_filters:
+      
+      conv_layer = ConvPoolLayer(rng, input=last_output,
+                    image_shape=(mini_batch_size, n_colors, input_height, input_width),
+                    filter_shape=(n, n_colors, filter_height, filter_width), 
+                    poolsize=pool_size, activation = conv_activation)
+      last_output = conv_layer.output
+      
+      out_height = (last_output_shape[2] - filter_height + 1) / pool_height
+
+      out_width = (last_output_shape[3] - filter_width + 1) / pool_width
+      last_output_shape = (mini_batch_size, n, out_height, out_width)
+      last_output = conv_layer.output 
+      
+      print "last output shape", last_output_shape 
+    """
     conv0 = ConvPoolLayer(rng, input=conv0_input,
             image_shape=(mini_batch_size, n_colors, input_height, input_width),
             filter_shape=(n_filters[0], n_colors, filter_size[0], filter_size[1]), 
@@ -69,6 +90,8 @@ class ConvNet(object):
             image_shape=(mini_batch_size, n_filters[0], 14, 14),
             filter_shape=(n_filters[1], n_filters[0], filter_size[0], filter_size[1]), 
             poolsize=pool_size, activation = conv_activation)
+    """
+    
     # the TanhLayer being fully-connected, it operates on 2D matrices of
     # shape (batch_size,num_pixels) (i.e matrix of rasterized images).
     # This will generate a matrix of shape (20,32*4*4) = (20,512)
@@ -77,8 +100,8 @@ class ConvNet(object):
       n_hidden = [n_hidden]
     
     hidden_layers = []
-    last_output = conv1.output.flatten(2)
-    last_output_size = n_filters[1] * filter_size[0] * filter_size[1]
+    last_output = last_output.flatten(2)
+    last_output_size = last_output_shape[1] * last_output_shape[2] * last_output_shape[3]
     for n in n_hidden:
       # construct a fully-connected sigmoidal layer
       layer = HiddenLayer(rng, 
@@ -93,14 +116,16 @@ class ConvNet(object):
     output_layer = LogisticRegression(
                      input=last_output, 
                      n_in=last_output_size, 
-                    n_out=n_out)
+                     n_out=n_out)
 
     # the cost we minimize during training is the NLL of the model
     self.cost = output_layer.negative_log_likelihood(y)
     # create a function to compute the mistakes that are made by the model
     self.test_model = theano.function([x,y], output_layer.errors(y)) 
-    self.params = output_layer.params + conv1.params + conv0.params
+    self.params = [output_layer.params]
     for layer in hidden_layers:
+      self.params.extend(layer.params)
+    for layer in conv_layers:
       self.params.extend(layer.params)
 
     # create a list of gradients for all model parameters
@@ -113,13 +138,15 @@ class ConvNet(object):
     updates = []
     for param_i, grad_i in zip(self.params, self.grads):
         updates.append((param_i, param_i - learning_rate * grad_i))
+        
     # WARNING: We are going to overwrite the gradients!
     borrowed_grads = [theano.Out(g, borrow=True) for g in self.grads ]
-    self.bprop_return_grads = theano.function([x, y], borrowed_grads)
-    self.bprop_update_return_grads = theano.function([x, y], borrowed_grads, updates = updates) 
-    self.bprop_update_return_cost = theano.function([x, y], self.cost, updates = updates) 
-    self.return_cost = theano.function([x, y], self.cost)
+    self.bprop_no_update = theano.function([x, y], [self.cost] + borrowed_grads)
+    self.bprop_update = theano.function([x, y], [self.cost] + borrowed_grads, updates = updates) 
+    # self.bprop_update_return_cost = theano.function([x, y], self.cost, updates = updates) 
+    #self.return_cost = theano.function([x, y], self.cost)
 
+ 
   def get_weights_list(self):
     return [p.get_value(borrow=True) for p in self.params]
 
@@ -154,10 +181,12 @@ class ConvNet(object):
     assert curr_idx == len(new_w)
   
 
+  
   def get_gradients_list(self, xslice, yslice):
-    return [to_gpuarray(g_elt, copyif=True)
-            for g_elt in self.bprop_return_grads(xslice, yslice)]
-
+    grads_list = self.mini_batch_grads(xslice, yslice)
+    return [to_gpuarray(g_elt, copyif=True) if not np.isscalar(g_elt) else g_elt
+            for g_elt in grads_list]
+    
   def get_gradients(self, xslice, yslice):
     return ParamsList(self.get_gradients_list(xslice, yslice), copy_first=False).flatten()
 
@@ -192,15 +221,26 @@ class ConvNet(object):
       start = mini_batch_idx * mini_batch_size 
       stop = start + mini_batch_size 
       xslice = x[start:stop]
-      yslice = y[start:stop]
-      result = fn(xslice, yslice)
+      if y is None:
+        result = fn(xslice)
+      else:
+        yslice = y[start:stop]
+        result = fn(xslice, yslice)
       if result is not None:
         results.append(result)
     if len(results) > 0:
       return results 
 
+  def mini_batch_cost(self, xslice, yslice):
+    outputs = self.bprop_no_update(xslice, yslice)
+    return outputs[0]
+  
+  def mini_batch_grads(self, xslice, yslice):
+    outputs = self.bprop_no_update(xslice, yslice)
+    return outputs[1:]
+  
   def average_cost(self, x, y):
-    costs = self.for_each_slice(x,y,self.return_cost)  
+    costs = self.for_each_slice(x,y, self.mini_batch_cost)  
     return np.mean(costs)
   def average_error(self, x, y):
     errs = self.for_each_slice(x,y,self.test_model)
@@ -208,24 +248,37 @@ class ConvNet(object):
     
   def predict(self, x):
     assert False, "Not yet implemented" 
-    batch_outputs = self.for_each_slice(x, y = None, self.fprop)
+    batch_outputs = self.for_each_slice(x, None, self.fprop)
     return np.array(batch_outputs)
 
-  def fit(self, x, y, return_average_gradient=False):
-    """
-    Returns list containing most recent gradients
-    """
-    g_sum = ParamsList(copy_first=False)
-    def fn(xslice, yslice):
-      if return_average_gradient:
-        g_list = self.bprop_update_return_grads(xslice, yslice)
-        g_sum.iadd(g_list)
-        del g_list 
-      else:
-        self.bprop_update_return_cost(xslice, yslice)
-    self.for_each_slice(x, y, fn)
-
+  def fit(self, x, y, 
+          n_epochs = 1,
+          shuffle = False, 
+          return_average_gradient=False):
+    
+    if return_average_gradient:
+      g_sum = ParamsList(copy_first=False)
+      def fn(xslice, yslice):
+        outputs = self.bprop_update(xslice, yslice)
+        g_sum.iadd(outputs[1:])
+        del outputs 
+    else:
+      costs = []
+      def fn(xslice, yslice):
+       outputs = self.bprop_update(xslice, yslice)
+       costs.append(outputs[0])
+    for _ in xrange(n_epochs):
+      if shuffle:
+        shuffle_indices = np.arange(len(y))
+        np.random.shuffle(shuffle_indices)
+        x = x.take(shuffle_indices, axis=0)
+        y = y.take(shuffle_indices)
+      self.for_each_slice(x, y, fn)
+    
     if return_average_gradient:
       g = g_sum.flatten() 
       g *= (1.0 / g_sum.n_updates)
       return g 
+    else:
+      return np.mean(costs)
+    
