@@ -21,7 +21,7 @@ rng = np.random.RandomState(23455)
 
 class ConvNet(object): 
   def __init__(self,  
-                     mini_batch_size, 
+                     batch_size, 
                      learning_rate, 
                      momentum = 0.0, 
                      input_size = (32,32),
@@ -33,7 +33,7 @@ class ConvNet(object):
                      conv_activation = 'relu', 
                      n_hidden = (200, 100, 50, 25)): 
     
-    self.mini_batch_size = mini_batch_size  
+    self.batch_size = batch_size  
     self.momentum = momentum 
     self.learning_rate = learning_rate
     # allocate symbolic variables for the data
@@ -45,12 +45,12 @@ class ConvNet(object):
     ######################
     # BUILD ACTUAL MODEL #
     ######################
-    print '  >> Building model: mini_batch_size = %d, learning_rate = %s, momentum = %s, n_filters = %s' % (mini_batch_size, learning_rate, momentum, n_filters)
+    print '  >> Building model: batch_size = %d, learning_rate = %s, momentum = %s, n_filters = %s' % (batch_size, learning_rate, momentum, n_filters)
 
     input_height, input_width = input_size 
     pool_height, pool_width = pool_size
     filter_height, filter_width = filter_size 
-    last_output_shape = (mini_batch_size, n_colors, input_height, input_width)
+    last_output_shape = (batch_size, n_colors, input_height, input_width)
     
     # Reshape matrix of rasterized images 
     # to a 4D tensor, compatible with our LConvPoolLayer
@@ -62,35 +62,22 @@ class ConvNet(object):
     # 4D output tensor is thus of shape (batch_size,nkerns[0],12,12)
     
     conv_layers = []
-    for n in n_filters:
+    last_n_filters = n_colors
+    for curr_n_filters in n_filters:
       
       conv_layer = ConvPoolLayer(rng, input=last_output,
-                    image_shape=(mini_batch_size, n_colors, input_height, input_width),
-                    filter_shape=(n, n_colors, filter_height, filter_width), 
+                    image_shape=last_output_shape, 
+                    filter_shape=(curr_n_filters, last_n_filters, filter_height, filter_width), 
                     poolsize=pool_size, activation = conv_activation)
       last_output = conv_layer.output
       
       out_height = (last_output_shape[2] - filter_height + 1) / pool_height
 
       out_width = (last_output_shape[3] - filter_width + 1) / pool_width
-      last_output_shape = (mini_batch_size, n, out_height, out_width)
+      last_output_shape = (batch_size, curr_n_filters, out_height, out_width)
       last_output = conv_layer.output 
-      
-      print "last output shape", last_output_shape 
-    """
-    conv0 = ConvPoolLayer(rng, input=conv0_input,
-            image_shape=(mini_batch_size, n_colors, input_height, input_width),
-            filter_shape=(n_filters[0], n_colors, filter_size[0], filter_size[1]), 
-            poolsize=pool_size, activation = conv_activation)
-    # Construct the second convolutional pooling layer
-    # filtering reduces the image size to (12-5+1,12-5+1)=(8,8)
-    # maxpooling reduces this further to (8/2,8/2) = (4,4)
-    # 4D output tensor is thus of shape (nkerns[0],nkerns[1],4,4)
-    conv1 = ConvPoolLayer(rng, input=conv0.output,
-            image_shape=(mini_batch_size, n_filters[0], 14, 14),
-            filter_shape=(n_filters[1], n_filters[0], filter_size[0], filter_size[1]), 
-            poolsize=pool_size, activation = conv_activation)
-    """
+      conv_layers.append(conv_layer) 
+      last_n_filters = curr_n_filters
     
     # the TanhLayer being fully-connected, it operates on 2D matrices of
     # shape (batch_size,num_pixels) (i.e matrix of rasterized images).
@@ -122,12 +109,11 @@ class ConvNet(object):
     self.cost = output_layer.negative_log_likelihood(y)
     # create a function to compute the mistakes that are made by the model
     self.test_model = theano.function([x,y], output_layer.errors(y)) 
-    self.params = [output_layer.params]
+    self.params = output_layer.params
     for layer in hidden_layers:
       self.params.extend(layer.params)
     for layer in conv_layers:
       self.params.extend(layer.params)
-
     # create a list of gradients for all model parameters
     self.grads = T.grad(self.cost, self.params)
     # train_model is a function that updates the model parameters by
@@ -183,7 +169,7 @@ class ConvNet(object):
 
   
   def get_gradients_list(self, xslice, yslice):
-    grads_list = self.mini_batch_grads(xslice, yslice)
+    grads_list = self.batch_grads(xslice, yslice)
     return [to_gpuarray(g_elt, copyif=True) if not np.isscalar(g_elt) else g_elt
             for g_elt in grads_list]
     
@@ -194,13 +180,13 @@ class ConvNet(object):
     """
     Get the average gradient across multiple mini-batches
     """
-    n_batches = x.shape[0] / self.mini_batch_size
+    n_batches = x.shape[0] / self.batch_size
     if n_batches == 1:
       return self.get_gradients(x,y)
     combined = ParamsList(copy_first=False)
     for batch_idx in xrange(n_batches):
-      start = batch_idx*self.mini_batch_size
-      stop = start + self.mini_batch_size
+      start = batch_idx*self.batch_size
+      stop = start + self.batch_size
       xslice = x[start:stop]
       yslice = y[start:stop]
       gs = self.get_gradient_list(xslice, yslice)
@@ -213,13 +199,13 @@ class ConvNet(object):
     return self.get_weights(), self.average_gradients(x,y)
   
  
-  def for_each_slice(self, x, y, fn, mini_batch_size = None):
-    if mini_batch_size is None:
-      mini_batch_size = self.mini_batch_size
+  def for_each_slice(self, x, y, fn, batch_size = None):
+    if batch_size is None:
+      batch_size = self.batch_size
     results = []
-    for mini_batch_idx in xrange(x.shape[0] / mini_batch_size):
-      start = mini_batch_idx * mini_batch_size 
-      stop = start + mini_batch_size 
+    for batch_idx in xrange(x.shape[0] / batch_size):
+      start = batch_idx * batch_size 
+      stop = start + batch_size 
       xslice = x[start:stop]
       if y is None:
         result = fn(xslice)
@@ -231,16 +217,16 @@ class ConvNet(object):
     if len(results) > 0:
       return results 
 
-  def mini_batch_cost(self, xslice, yslice):
+  def batch_cost(self, xslice, yslice):
     outputs = self.bprop_no_update(xslice, yslice)
     return outputs[0]
   
-  def mini_batch_grads(self, xslice, yslice):
+  def batch_grads(self, xslice, yslice):
     outputs = self.bprop_no_update(xslice, yslice)
     return outputs[1:]
   
   def average_cost(self, x, y):
-    costs = self.for_each_slice(x,y, self.mini_batch_cost)  
+    costs = self.for_each_slice(x,y, self.batch_cost)  
     return np.mean(costs)
   def average_error(self, x, y):
     errs = self.for_each_slice(x,y,self.test_model)

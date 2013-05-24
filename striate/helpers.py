@@ -1,7 +1,17 @@
 import numpy as np 
+
+from theano.misc.pycuda_utils import to_cudandarray, to_gpuarray 
+from theano.sandbox.cuda import CudaNdarray
 import pycuda 
 import pycuda.autoinit
 from pycuda.gpuarray import GPUArray 
+import scikits.cuda
+import scikits.cuda.linalg 
+
+scikits.cuda.linalg.init() 
+
+import scikits.cuda.cublas as cublas 
+cublas_handle =  cublas.cublasCreate()
 
 def gpu_copy(x):
   y = pycuda.gpuarray.empty_like(x)
@@ -58,7 +68,10 @@ def concat(xs):
 
 def scalar(x):
   if isinstance(x, GPUArray):
-    return x.get().reshape(1)[0]
+    host = x.get()
+    reshaped = host.reshape(1)
+    scalar = reshaped[0]   
+    return scalar 
   else:
     assert np.isscalar(x)
     return x
@@ -70,9 +83,21 @@ def getidx(x, i):
     return x[i]
 
 def dot(x,y):
+  if isinstance(x, CudaNdarray):
+    x = to_gpuarray(x)
+  if isinstance(y, CudaNdarray):
+      y = to_gpuarray(y)
   if isinstance(x, GPUArray):
     assert isinstance(y, GPUArray)
-    if len(x.shape) == 1 and len(y.shape) == 1:
+    if x.shape == (1,):
+      assert y.shape[0] == 1
+      y *= scalar(x)
+      return y.ravel() 
+    elif y.shape == (1,):
+      assert x.shape[1] == 1
+      x *= scalar(y) 
+      return x.ravel()
+    elif len(x.shape) == 1 and len(y.shape) == 1:
       return scalar(pycuda.gpuarray.dot(x,y))
     else:
       if len(x.shape) == 1:
@@ -81,7 +106,6 @@ def dot(x,y):
       if len(y.shape) == 1:
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
-      
       result = scikits.cuda.linalg.dot(x,y)
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1
