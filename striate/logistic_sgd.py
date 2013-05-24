@@ -1,4 +1,7 @@
 """
+Copied directly from Theano's LeNet5 tutorial
+----------------------------------------------
+
 This tutorial introduces logistic regression using Theano and stochastic
 gradient descent.
 
