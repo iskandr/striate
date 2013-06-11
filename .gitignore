@@ -2,6 +2,8 @@
 
 # C extensions
 *.so
+*.o
+cudaconv2/cudaconv2_wrap.cu
 
 # Packages
 *.egg
@@ -33,3 +35,4 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+

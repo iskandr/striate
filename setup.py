@@ -42,7 +42,10 @@ the features are the minimum I need for my own needs. You've been warned!
     version="0.1",
     url="http://github.com/iskandr/striate",
     packages=[ 'striate' ],
-    package_dir={ '' : '.' },
+    package_dir={ 
+      'striate' : 'striate',
+      'cudaconv2' : 'cudaconv2' ,
+    },
     requires=[
       'pycuda', 
       'theano',
