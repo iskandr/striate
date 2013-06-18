@@ -19,6 +19,8 @@ filterNum = 64
 stride = 1
 modulesX = 1 + int(((2 * padding + imgSize - filterSize) / float(stride)))
 
+print 'Modules X', modulesX
+
 
 img = gpuarray.to_gpu(np.ones((imgSize * imgSize * color, imgNum)).astype(np.float32))
 filter = gpuarray.to_gpu(np.ones((filterSize * filterSize * color, filterNum)).astype(np.float32))

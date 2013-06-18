@@ -20,24 +20,24 @@ rng = np.random.RandomState(23455)
 
 
 class ConvNet(object): 
-  def __init__(self,  
-                     batch_size, 
-                     learning_rate, 
-                     momentum = 0.0, 
-                     input_size = (32,32),
-                     n_colors = 3, 
-                     n_out = 10, 
-                     n_filters = (64, 64), 
-                     filter_size = (5,5),
-                     pool_size = (2,2), 
-                     conv_activation = 'relu', 
-                     n_hidden = (200, 100, 50, 25)): 
+  def __init__(self,
+                     batch_size,
+                     learning_rate,
+                     momentum=0.0,
+                     input_size=(32, 32),
+                     n_colors=3,
+                     n_out=10,
+                     n_filters=(64, 64),
+                     filter_size=(5, 5),
+                     pool_size=(2, 2),
+                     conv_activation='relu',
+                     n_hidden=(200, 100, 50, 25)): 
     
     self.batch_size = batch_size  
     self.momentum = momentum 
     self.learning_rate = learning_rate
     # allocate symbolic variables for the data
-    x = T.tensor4('x') # matrix('x')   # the data is presented as rasterized images
+    x = T.tensor4('x')  # matrix('x')   # the data is presented as rasterized images
     y = T.ivector('y')  # the labels are presented as 1D vector of
                         # [int] labels
 
@@ -66,9 +66,9 @@ class ConvNet(object):
     for curr_n_filters in n_filters:
       
       conv_layer = ConvPoolLayer(rng, input=last_output,
-                    image_shape=last_output_shape, 
-                    filter_shape=(curr_n_filters, last_n_filters, filter_height, filter_width), 
-                    poolsize=pool_size, activation = conv_activation)
+                    image_shape=last_output_shape,
+                    filter_shape=(curr_n_filters, last_n_filters, filter_height, filter_width),
+                    poolsize=pool_size, activation=conv_activation)
       last_output = conv_layer.output
       
       out_height = (last_output_shape[2] - filter_height + 1) / pool_height
@@ -91,8 +91,8 @@ class ConvNet(object):
     last_output_size = last_output_shape[1] * last_output_shape[2] * last_output_shape[3]
     for n in n_hidden:
       # construct a fully-connected sigmoidal layer
-      layer = HiddenLayer(rng, 
-                  input=last_output, 
+      layer = HiddenLayer(rng,
+                  input=last_output,
                   n_in=last_output_size,
                   n_out=n, activation=T.tanh)
       last_output = layer.output
@@ -101,14 +101,14 @@ class ConvNet(object):
 
     # classify the values of the fully-connected sigmoidal layer
     output_layer = LogisticRegression(
-                     input=last_output, 
-                     n_in=last_output_size, 
+                     input=last_output,
+                     n_in=last_output_size,
                      n_out=n_out)
 
     # the cost we minimize during training is the NLL of the model
     self.cost = output_layer.negative_log_likelihood(y)
     # create a function to compute the mistakes that are made by the model
-    self.test_model = theano.function([x,y], output_layer.errors(y)) 
+    self.test_model = theano.function([x, y], output_layer.errors(y)) 
     self.params = output_layer.params
     for layer in hidden_layers:
       self.params.extend(layer.params)
@@ -128,9 +128,9 @@ class ConvNet(object):
     # WARNING: We are going to overwrite the gradients!
     borrowed_grads = [theano.Out(g, borrow=True) for g in self.grads ]
     self.bprop_no_update = theano.function([x, y], [self.cost] + borrowed_grads)
-    self.bprop_update = theano.function([x, y], [self.cost] + borrowed_grads, updates = updates) 
+    self.bprop_update = theano.function([x, y], [self.cost] + borrowed_grads, updates=updates) 
     # self.bprop_update_return_cost = theano.function([x, y], self.cost, updates = updates) 
-    #self.return_cost = theano.function([x, y], self.cost)
+    # self.return_cost = theano.function([x, y], self.cost)
 
  
   def get_weights_list(self):
@@ -144,7 +144,7 @@ class ConvNet(object):
     Given a ragged list of arrays, add each to network params
     """
     for p, dx in zip(self.params, dxs):
-      old_value = p.get_value(borrow = True)
+      old_value = p.get_value(borrow=True)
       old_value += dx 
       p.set_value(old_value, borrow=True)
 
@@ -156,13 +156,13 @@ class ConvNet(object):
       w = p.get_value(borrow=True, return_internal_type=True)
       nelts = 1 if np.isscalar(w) else w.size 
       if isinstance(w, (CudaNdarray, GPUArray)):
-        new_reshaped = new_w[curr_idx:curr_idx+nelts].reshape(w.shape)
+        new_reshaped = new_w[curr_idx:curr_idx + nelts].reshape(w.shape)
         nbytes = new_reshaped.nbytes if hasattr(new_reshaped, 'nbytes') else 4 * nelts 
         pycuda.driver.memcpy_dtod(w.gpudata, new_reshaped.gpudata, nbytes)
         # p.set_value(pycuda.gpuarray.to_gpu(new_reshaped), borrow=True)
       else:
         assert np.isscalar(w), "Expected scalar, got %s" % type(w) 
-        p.set_value(np.array(new_w[curr_idx:curr_idx+1])[0])
+        p.set_value(np.array(new_w[curr_idx:curr_idx + 1])[0])
       curr_idx += nelts 
     assert curr_idx == len(new_w)
   
@@ -182,10 +182,10 @@ class ConvNet(object):
     """
     n_batches = x.shape[0] / self.batch_size
     if n_batches == 1:
-      return self.get_gradients(x,y)
+      return self.get_gradients(x, y)
     combined = ParamsList(copy_first=False)
     for batch_idx in xrange(n_batches):
-      start = batch_idx*self.batch_size
+      start = batch_idx * self.batch_size
       stop = start + self.batch_size
       xslice = x[start:stop]
       yslice = y[start:stop]
@@ -196,10 +196,10 @@ class ConvNet(object):
     return g 
  
   def get_state(self, x, y):
-    return self.get_weights(), self.average_gradients(x,y)
+    return self.get_weights(), self.average_gradients(x, y)
   
  
-  def for_each_slice(self, x, y, fn, batch_size = None):
+  def for_each_slice(self, x, y, fn, batch_size=None):
     if batch_size is None:
       batch_size = self.batch_size
     results = []
@@ -226,10 +226,10 @@ class ConvNet(object):
     return outputs[1:]
   
   def average_cost(self, x, y):
-    costs = self.for_each_slice(x,y, self.batch_cost)  
+    costs = self.for_each_slice(x, y, self.batch_cost)  
     return np.mean(costs)
   def average_error(self, x, y):
-    errs = self.for_each_slice(x,y,self.test_model)
+    errs = self.for_each_slice(x, y, self.test_model)
     return np.mean(errs)
     
   def predict(self, x):
@@ -237,9 +237,9 @@ class ConvNet(object):
     batch_outputs = self.for_each_slice(x, None, self.fprop)
     return np.array(batch_outputs)
 
-  def fit(self, x, y, 
-          n_epochs = 1,
-          shuffle = False, 
+  def fit(self, x, y,
+          n_epochs=1,
+          shuffle=False,
           return_average_gradient=False):
     
     if return_average_gradient:

@@ -121,20 +121,6 @@ void localImgActsSparse(NVMatrix& hidActs, NVMatrix& filters, NVMatrix& targets,
                         int imgSizeX, int numModulesY, int paddingStart, int moduleStride, int numImgColors,
                         int numFilterColors, int numGroups, float scaleTargets, float scaleOutput);
 
-// For compatibility w cudaconv3
-static inline void convWeightActs(NVMatrix& images, NVMatrix& hidActs, NVMatrix& targets, int imgSizeY, int numModulesY,
-                    int numModulesX, int filterSize, int paddingStart, int moduleStride, int numImgColors,
-                    int numGroups, int partialSum, float scaleTargets, float scaleOutput, int rand, int skip,
-                    bool atomic) {
-    convWeightActs(images, hidActs, targets, imgSizeY, numModulesY, numModulesX, filterSize, paddingStart, moduleStride,
-                   numImgColors, numGroups, partialSum, scaleTargets, scaleOutput);
-}
-static inline void localWeightActs(NVMatrix& images, NVMatrix& hidActs, NVMatrix& targets, int imgSizeY, int numModulesY,
-                     int numModulesX, int filterSize, int paddingStart, int moduleStride, int numImgColors,
-                     int numGroups, float scaleTargets, float scaleOutput, int rand, int skip, bool atomic) {
-    localWeightActs(images, hidActs, targets, imgSizeY, numModulesY, numModulesX, filterSize, paddingStart,
-                    moduleStride, numImgColors, numGroups, scaleTargets, scaleOutput);
-}
 
 #endif	/* COMMON_CUH */
 

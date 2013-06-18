@@ -37,10 +37,7 @@ print convolve2d(np.ones((imgSize, imgSize)).astype(np.float32), np.ones((filter
 cudaconv2.convFilterActs(img, filter, target, imgSize, modulesX, modulesX, -padding, stride, color, 1, 0.0, 1.0)
 
 print 'pycuda output for convolution'
-atarget = target.get()
-
-for i in range(atarget.shape[0]):
-  print atarget[i, 0]
+print target.get()
 
 
 #from pycuda.compiler import *

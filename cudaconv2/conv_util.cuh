@@ -28,7 +28,9 @@
 #define	CONV_UTIL_CUH
 
 #include <nvmatrix.cuh>
-
+void addVector(NVMatrix& taret, NVMatrix& vec);
+void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
+                   int subsX, int startX, int strideX, int outputsX);
 void convLocalMaxUndo(NVMatrix& images, NVMatrix& maxGrads, NVMatrix& maxActs, NVMatrix& target,
                       int subsX, int startX, int strideX, int outputsX);
 void convLocalAvgUndo(NVMatrix& avgGrads, NVMatrix& target,

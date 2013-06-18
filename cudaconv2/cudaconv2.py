@@ -90,6 +90,14 @@ def localImgActs(*args):
   return _cudaconv2.localImgActs(*args)
 localImgActs = _cudaconv2.localImgActs
 
+def convWeightActs(*args):
+  return _cudaconv2.convWeightActs(*args)
+convWeightActs = _cudaconv2.convWeightActs
+
+def localWeightActs(*args):
+  return _cudaconv2.localWeightActs(*args)
+localWeightActs = _cudaconv2.localWeightActs
+
 def convFilterActsSparse(*args):
   return _cudaconv2.convFilterActsSparse(*args)
 convFilterActsSparse = _cudaconv2.convFilterActsSparse
@@ -113,14 +121,6 @@ convImgActsSparse = _cudaconv2.convImgActsSparse
 def localImgActsSparse(*args):
   return _cudaconv2.localImgActsSparse(*args)
 localImgActsSparse = _cudaconv2.localImgActsSparse
-
-def convWeightActs(*args):
-  return _cudaconv2.convWeightActs(*args)
-convWeightActs = _cudaconv2.convWeightActs
-
-def localWeightActs(*args):
-  return _cudaconv2.localWeightActs(*args)
-localWeightActs = _cudaconv2.localWeightActs
 class NVMatrix(_object):
     __swig_setmethods__ = {}
     __setattr__ = lambda self, name, value: _swig_setattr(self, NVMatrix, name, value)
@@ -136,9 +136,9 @@ class NVMatrix(_object):
     __swig_setmethods__["_stride"] = _cudaconv2.NVMatrix__stride_set
     __swig_getmethods__["_stride"] = _cudaconv2.NVMatrix__stride_get
     if _newclass:_stride = _swig_property(_cudaconv2.NVMatrix__stride_get, _cudaconv2.NVMatrix__stride_set)
-    __swig_setmethods__["_devdata"] = _cudaconv2.NVMatrix__devdata_set
-    __swig_getmethods__["_devdata"] = _cudaconv2.NVMatrix__devdata_get
-    if _newclass:_devdata = _swig_property(_cudaconv2.NVMatrix__devdata_get, _cudaconv2.NVMatrix__devdata_set)
+    __swig_setmethods__["_devData"] = _cudaconv2.NVMatrix__devData_set
+    __swig_getmethods__["_devData"] = _cudaconv2.NVMatrix__devData_get
+    if _newclass:_devData = _swig_property(_cudaconv2.NVMatrix__devData_get, _cudaconv2.NVMatrix__devData_set)
     def __init__(self, *args): 
         this = _cudaconv2.new_NVMatrix(*args)
         try: self.this.append(this)
@@ -147,16 +147,103 @@ class NVMatrix(_object):
     def getNumCols(self): return _cudaconv2.NVMatrix_getNumCols(self)
     def getDevData(self): return _cudaconv2.NVMatrix_getDevData(self)
     def getStride(self): return _cudaconv2.NVMatrix_getStride(self)
+    def getLeadingDim(self): return _cudaconv2.NVMatrix_getLeadingDim(self)
+    def getFollowingDim(self): return _cudaconv2.NVMatrix_getFollowingDim(self)
     def getNumElements(self): return _cudaconv2.NVMatrix_getNumElements(self)
     def isTrans(self): return _cudaconv2.NVMatrix_isTrans(self)
     def isSameDims(self, *args): return _cudaconv2.NVMatrix_isSameDims(self, *args)
     def isContiguous(self): return _cudaconv2.NVMatrix_isContiguous(self)
     def resize(self, *args): return _cudaconv2.NVMatrix_resize(self, *args)
+    def addVector(self, *args): return _cudaconv2.NVMatrix_addVector(self, *args)
     __swig_destroy__ = _cudaconv2.delete_NVMatrix
     __del__ = lambda self : None;
 NVMatrix_swigregister = _cudaconv2.NVMatrix_swigregister
 NVMatrix_swigregister(NVMatrix)
 
+
+def addVector(*args):
+  return _cudaconv2.addVector(*args)
+addVector = _cudaconv2.addVector
+
+def convLocalMaxPool(*args):
+  return _cudaconv2.convLocalMaxPool(*args)
+convLocalMaxPool = _cudaconv2.convLocalMaxPool
+
+def convLocalAvgUndo(*args):
+  return _cudaconv2.convLocalAvgUndo(*args)
+convLocalAvgUndo = _cudaconv2.convLocalAvgUndo
+
+def convLocalMaxUndo(*args):
+  return _cudaconv2.convLocalMaxUndo(*args)
+convLocalMaxUndo = _cudaconv2.convLocalMaxUndo
+
+def convResponseNorm(*args):
+  return _cudaconv2.convResponseNorm(*args)
+convResponseNorm = _cudaconv2.convResponseNorm
+
+def convResponseNormUndo(*args):
+  return _cudaconv2.convResponseNormUndo(*args)
+convResponseNormUndo = _cudaconv2.convResponseNormUndo
+
+def convContrastNorm(*args):
+  return _cudaconv2.convContrastNorm(*args)
+convContrastNorm = _cudaconv2.convContrastNorm
+
+def convContrastNormUndo(*args):
+  return _cudaconv2.convContrastNormUndo(*args)
+convContrastNormUndo = _cudaconv2.convContrastNormUndo
+
+def convGaussianBlur(*args):
+  return _cudaconv2.convGaussianBlur(*args)
+convGaussianBlur = _cudaconv2.convGaussianBlur
+
+def convBedOfNails(*args):
+  return _cudaconv2.convBedOfNails(*args)
+convBedOfNails = _cudaconv2.convBedOfNails
+
+def convBedOfNailsUndo(*args):
+  return _cudaconv2.convBedOfNailsUndo(*args)
+convBedOfNailsUndo = _cudaconv2.convBedOfNailsUndo
+
+def convResizeBilinear(*args):
+  return _cudaconv2.convResizeBilinear(*args)
+convResizeBilinear = _cudaconv2.convResizeBilinear
+
+def convRGBToYUV(*args):
+  return _cudaconv2.convRGBToYUV(*args)
+convRGBToYUV = _cudaconv2.convRGBToYUV
+
+def convRGBToLAB(*args):
+  return _cudaconv2.convRGBToLAB(*args)
+convRGBToLAB = _cudaconv2.convRGBToLAB
+
+def convCrop(*args):
+  return _cudaconv2.convCrop(*args)
+convCrop = _cudaconv2.convCrop
+
+def normalizeLocalWeights(*args):
+  return _cudaconv2.normalizeLocalWeights(*args)
+normalizeLocalWeights = _cudaconv2.normalizeLocalWeights
+
+def convTICAGrad(*args):
+  return _cudaconv2.convTICAGrad(*args)
+convTICAGrad = _cudaconv2.convTICAGrad
+
+def convTICA(*args):
+  return _cudaconv2.convTICA(*args)
+convTICA = _cudaconv2.convTICA
+
+def convContrastNormCrossMap(*args):
+  return _cudaconv2.convContrastNormCrossMap(*args)
+convContrastNormCrossMap = _cudaconv2.convContrastNormCrossMap
+
+def convResponseNormCrossMapUndo(*args):
+  return _cudaconv2.convResponseNormCrossMapUndo(*args)
+convResponseNormCrossMapUndo = _cudaconv2.convResponseNormCrossMapUndo
+
+def convResponseNormCrossMap(*args):
+  return _cudaconv2.convResponseNormCrossMap(*args)
+convResponseNormCrossMap = _cudaconv2.convResponseNormCrossMap
 # This file is compatible with both classic and new-style classes.
 
 
