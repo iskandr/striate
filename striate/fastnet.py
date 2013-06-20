@@ -26,11 +26,33 @@ def printGPU(x, name):
     print '%.15f ' % i
 
 PFout = False
-PBout = True
+PBout = False
 
-class ConvLayer(object):
-  def __init__(self , filter_shape, image_shape,  padding = 2, stride = 1, initW = 0.01, initB =
+
+class Layer(object):
+
+  def __init__(self, name, type):
+    self.name = name
+    self.type = type
+
+  def fprop(self, input, output):
+    assert False, "No implementation for fprop"
+
+  def bprop(self, grad, input, output, outGrad):
+    assert False, "No implementation for bprop"
+
+  def update(self):
+    pass
+
+  def scaleLearningRate(self, l):
+    pass
+
+
+class ConvLayer(Layer):
+  def __init__(self , name, filter_shape, image_shape,  padding = 2, stride = 1, initW = 0.01, initB =
       0.0, epsW = 0.001, epsB = 0.002, bias = None, weight = None):
+    Layer.__init__(self, name, 'conv')
+
     self.filterSize = filter_shape[2]
     self.numFilter = filter_shape[0]
 
@@ -71,7 +93,7 @@ class ConvLayer(object):
     gpu_copy_to(self.tmp, output)
 
     if PFout:
-      printGPU(output, 'conv')
+      printGPU(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convImgActs(grad, self.filter, outGrad, self.imgSize, self.imgSize,
@@ -84,7 +106,7 @@ class ConvLayer(object):
     add_row_sum_to_vec(self.bias, self.tmp)
 
     if PBout:
-      printGPU(outGrad, 'conv')
+      printGPU(outGrad, self.name)
 
   def update(self):
     self.filter.mul_add(1, self.filterGrad, self.epsW / self.batchSize)
@@ -94,8 +116,9 @@ class ConvLayer(object):
     self.epsW *= l
     self.epsB *= l
 
-class MaxPoolLayer(object):
-  def __init__(self,  image_shape,  poolSize = 2, stride = 2, start = 0):
+class MaxPoolLayer(Layer):
+  def __init__(self,  name, image_shape,  poolSize = 2, stride = 2, start = 0):
+    Layer.__init__(self, name, 'pool')
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
@@ -110,24 +133,19 @@ class MaxPoolLayer(object):
         self.outputSize)
 
     if PFout:
-      printGPU(output, 'pool')
+      printGPU(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, 0.0, 1.0)
 
     if PBout:
-      printGPU(outGrad, 'pool')
-
-  def update(self):
-    pass
-
-  def scaleLearningRate(self, l):
-    pass
+      printGPU(outGrad, self.name)
 
 
-class ResponseNormLayer(object):
-  def __init__(self, image_shape, pow, size, scale):
+class ResponseNormLayer(Layer):
+  def __init__(self, name, image_shape, pow, size, scale):
+    Layer.__init__(self, name, 'rnorm')
     self.batchSize,self.numColor, self.imgSize, _ = image_shape
 
     self.pow = pow
@@ -143,7 +161,7 @@ class ResponseNormLayer(object):
           self.pow)
 
       if PFout:
-        printGPU(output, 'rnorm1')
+        printGPU(output, self.name)
 
 
   def bprop(self, grad,input, output, outGrad):
@@ -151,17 +169,13 @@ class ResponseNormLayer(object):
         self.size, self.scale, self.pow, 0.0, 1.0)
 
     if PBout:
-      printGPU(outGrad, 'rnorm')
+      printGPU(outGrad, self.name)
 
-  def update(self):
-    pass
 
-  def scaleLearningRate(self, l):
-    pass
-
-class FCLayer(object):
-  def __init__(self, input_shape, n_out, epsW=0.001, epsB=0.002, initW = 0.01, initB = 0.0, weight =
+class FCLayer(Layer):
+  def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW = 0.01, initB = 0.0, weight =
       None, bias = None):
+    Layer.__init__(self, name, 'fc')
     self.epsW = epsW
     self.epsB = epsB
     self.initW = initW
@@ -192,7 +206,7 @@ class FCLayer(object):
     add_vec_to_rows(output, self.bias)
     
     if PFout:
-      printGPU(output, 'fc')
+      printGPU(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     gpu_copy_to(outGrad.mul_add(0, dot(transpose(self.weight), grad), 1), outGrad)
@@ -200,7 +214,7 @@ class FCLayer(object):
     add_row_sum_to_vec(self.bias, grad)
 
     if PBout:
-      printGPU(outGrad, 'fc')
+      printGPU(outGrad, self.name)
 
   def update(self):
     self.weight.mul_add(1, self.weightGrad, self.epsW / self.batchSize)
@@ -212,8 +226,9 @@ class FCLayer(object):
 
 
 
-class SoftmaxLayer(object):
-  def __init__(self, input_shape):
+class SoftmaxLayer(Layer):
+  def __init__(self, name, input_shape):
+    Layer.__init__(self, name, "softmax")
     self.inputSize, self.batchSize = input_shape
     self.outputSize = self.inputSize
     self.cost = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
@@ -232,7 +247,7 @@ class SoftmaxLayer(object):
     div_vec_to_cols(output, sum)
     
     if PFout:
-      printGPU(output, 'softmax') 
+      printGPU(output, self.name) 
 
   def logreg_cost(self, label, output):
     maxid = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.int32))
@@ -246,14 +261,8 @@ class SoftmaxLayer(object):
     softmax_bprop(output, label, outGrad)
 
     if PBout:
-      printGPU(outGrad, 'softmax') 
+      printGPU(outGrad, self.name) 
   
-  def update(self):
-    pass
-  
-
-  def scaleLearningRate(self, l):
-    pass
 
 class Neuron:
   def __init__(self): pass
@@ -278,8 +287,9 @@ class ReluNeuron(Neuron):
 neuronDict = {'relu': lambda : ReluNeuron(), }
 
 
-class NeuronLayer(object):
-  def __init__(self, image_shape,  type = 'relu'):
+class NeuronLayer(Layer):
+  def __init__(self, name, image_shape,  type = 'relu'):
+    Layer.__init__(self, name, type)
     self.neuron = neuronDict[type]()
     self.batchSize = image_shape[0]
     self.outputShape = image_shape
@@ -330,7 +340,7 @@ class FastNet(object):
       stride = ld['stride'][0]
       initW = ld['initW'][0]
       initB = ld['initB']
-
+      name = ld['name']
       epsW = ld['epsW'][0]
       epsB = ld['epsB']
 
@@ -341,7 +351,7 @@ class FastNet(object):
 
       filter_shape = (numFilter, numColor, filterSize, filterSize)
       img_shape = self.imgShapes[-1]
-      return ConvLayer(filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias,
+      return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias,
           weight)
 
     if ld['type'] == 'pool':
@@ -349,12 +359,14 @@ class FastNet(object):
       start = ld['start']
       poolSize = ld['sizeX']
       img_shape = self.imgShapes[-1]
-      return MaxPoolLayer(img_shape, poolSize, stride, start)
+      name = ld['name']
+      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
 
     if ld['type'] == 'neuron':
       if ld['neuron']['type'] == 'relu':
         img_shape = self.imgShapes[-1]
-        return NeuronLayer(img_shape, type = 'relu')
+        name = ld['name']
+        return NeuronLayer(name, img_shape, type = 'relu')
     
     if ld['type'] == 'fc':
       epsB = ld['epsB']
@@ -365,12 +377,14 @@ class FastNet(object):
       n_out = ld['outputs']
       bias = ld['biases']
       weight = ld['weights'][0]
+      name = ld['name']
       input_shape = self.inputShapes[-1]
-      return FCLayer(input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
+      return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
 
     if ld['type'] == 'softmax':
+      name = ld['name']
       input_shape = self.inputShapes[-1]
-      return SoftmaxLayer(input_shape)
+      return SoftmaxLayer(name, input_shape)
   
       
    
@@ -383,24 +397,24 @@ class FastNet(object):
         self.append_layer(layer)
 
   def autoAddLayer(self, n_out):
-    conv1 = ConvLayer(filter_shape = (64, 3, 5, 5), image_shape = self.imgShapes[-1])
+    conv1 = ConvLayer('conv1', filter_shape = (64, 3, 5, 5), image_shape = self.imgShapes[-1])
     conv1.scaleLearningRate(self.learningRate)
     self.append_layer(conv1)
   
-    relu = NeuronLayer(self.imgShapes[-1])
+    relu = NeuronLayer('conv1_neuron', self.imgShapes[-1])
     self.append_layer(relu)
 
-    pool1 = MaxPoolLayer(self.imgShapes[-1])
+    pool1 = MaxPoolLayer('pool1', self.imgShapes[-1])
     self.append_layer(pool1)
 
-    rnorm1 = ResponseNormLayer(self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
+    rnorm1 = ResponseNormLayer('rnorm1', self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
     self.append_layer(rnorm1)
   
-    fc1 = FCLayer(self.inputShapes[-1], n_out)
+    fc1 = FCLayer('fc', self.inputShapes[-1], n_out)
     fc1.scaleLearningRate(self.learningRate)
     self.append_layer(fc1)
 
-    softmax1 = SoftmaxLayer(self.inputShapes[-1])
+    softmax1 = SoftmaxLayer('softmax', self.inputShapes[-1])
     self.append_layer(softmax1)
 
 
