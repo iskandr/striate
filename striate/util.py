@@ -301,7 +301,7 @@ def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
     )
 
   add_func = mod.get_function('add_vec_to_rows')
-  if not dest:
+  if dest is None:
     dest = mat
   block = (32, 32, 1)
   grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
@@ -611,12 +611,13 @@ def softmax_bprop(mat, label, grad):
         int j = blockDim.y * blockIdx.y + threadIdx.y;
 
         int idx= i + j * leading;
-        if( i > cols) return;
-        if( j > rows) return;
+        if( i >= cols) return;
+        if( j >= rows) return;
 
-        grad[idx] = mat[idx];
-        if(i == label[j])
-          grad[idx] = grad[idx] -1;
+        if(j == label[i])
+          grad[idx] = 1 - mat[idx];
+        else
+          grad[idx] = 0 - mat[idx];
       }
       '''
       )
@@ -633,13 +634,13 @@ def relu_activate(input, output):
   relu_func(input, output)
 
 
-def relu_compute_grad(grad, output, inputGrad):
+def relu_compute_grad(grad, output, outGrad):
   relu_grad_func  = ElementwiseKernel(
       'float *x, float* y, float* z',
-      'z[i] = x[i] * (y[i] > 0)',
+      'x[i] = x[i] * (y[i] >  0.0f); z[i] = x[i]',
       'relu_gradient'
       )
-  relu_grad_func(grad, output, inputGrad)
+  relu_grad_func(grad, output, outGrad)
 
 def gpu_copy_to(x, y):
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
