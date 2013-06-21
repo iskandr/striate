@@ -1,20 +1,48 @@
-import numpy as np 
-import pycuda 
+import numpy as np
+from time import time
+import pycuda
 import pycuda.autoinit
 from pycuda import gpuarray
 from pycuda.gpuarray import GPUArray
 import scikits.cuda
-import scikits.cuda.linalg 
+import scikits.cuda.linalg
 from pycuda.elementwise import ElementwiseKernel
 
-scikits.cuda.linalg.init() 
+scikits.cuda.linalg.init()
 
-import scikits.cuda.cublas as cublas 
+import scikits.cuda.cublas as cublas
 cublas_handle =  cublas.cublasCreate()
 
 
 from pycuda.compiler import SourceModule
-INTERNAL_SIZE = 256 
+
+
+class Timer:
+  def __init__(self):
+    self.func_time = {}
+    self.last_time = 0.0
+
+  def start(self):
+    self.last_time = time()
+
+  def end(self, func_name):
+    ftime = time() - self.last_time
+    if func_name in self.func_time:
+      self.func_time[func_name] += ftime
+    else:
+      self.func_time[func_name] = ftime
+
+  def report(self):
+    dic = self.func_time
+    for key in dic:
+      print key, ':', dic[key]
+
+timer = Timer()
+
+
+INTERNAL_SIZE = 256
+
+
 def I(i): return np.int32(i)
 def F(f): return np.float32(f)
 def NVBLOCK(x, base):
@@ -29,18 +57,19 @@ def row_max_reduce(x, mat):
   Small means the column of the matrix is up to 1024
   and the rows, seams like a little big, can be 2048, but the upper bound has  not been tested
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = x.shape
-  
+
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
-  
+
   mod = SourceModule('''
     __global__
     void row_max_reduce(float* mat, float* vec, int leading, int rows, int cols) {
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
     if(i < cols && i < INTERNAL_SIZE)
       buffer[i] = mat[i + j * leading];
@@ -82,6 +111,7 @@ def row_max_reduce(x, mat):
   block = (mw, 1,  1)
   leading = mat.strides[0]/4
   row_max_reduce_func(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  timer.end("row_max_reduce")
 
 
 def col_max_reduce(x, mat):
@@ -90,17 +120,18 @@ def col_max_reduce(x, mat):
   Small means the row of the matrix is up to 1024
   and the column, seams like a little big, can be 2048, but the upper bound has  not been tested
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = x.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
-  
+
   mod = SourceModule('''
     __global__
     void col_max_reduce(float* mat, float* vec, int leading, int rows, int cols) {
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
     if(j < INTERNAL_SIZE && j < rows)
       buffer[j] = mat[i + j * leading];
@@ -142,6 +173,7 @@ def col_max_reduce(x, mat):
   block = (1, mh,   1)
   leading = mat.strides[0]/4
   col_max_reduce_func(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  timer.end('col_max_reduce')
 
 
 def find_row_max_id(x, mat):
@@ -150,17 +182,18 @@ def find_row_max_id(x, mat):
   Small means the column of the matrix is up to 1024
   and the rows, seams like a little big, can be 2048, but the upper bound has  not been tested
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = x.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
-  
+
   mod = SourceModule('''
     __global__
     void row_max_id(float* mat, float* vec, int leading, int rows, int cols) {
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
     __shared__ int mind[INTERNAL_SIZE];
     if(i < INTERNAL_SIZE && i < cols){
@@ -176,7 +209,7 @@ def find_row_max_id(x, mat):
         while(forwardInd < cols)  {
           if (buffer[threadIdx.x] < mat[forwardInd + j * leading]) {
             buffer[threadIdx.x] = mat[forwardInd + j * leading];
-            mind[threadIdx.x] = forwardInd; 
+            mind[threadIdx.x] = forwardInd;
           }
           index ++;
           forwardInd = threadIdx.x + index * INTERNAL_SIZE;
@@ -209,6 +242,7 @@ def find_row_max_id(x, mat):
   block = (mw, 1,  1)
   leading = mat.strides[0]/4
   row_max_id(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  timer.end('find_row_max_id')
 
 
 def find_col_max_id(x, mat):
@@ -217,17 +251,18 @@ def find_col_max_id(x, mat):
   Small means the row of the matrix is up to 1024
   and the column, seams like a little big, can be 2048, but the upper bound has  not been tested
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = x.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
-  
+
   mod = SourceModule('''
     __global__
     void col_max_id(float* mat, float* vec, int leading, int rows, int cols) {
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
     __shared__ int mind[INTERNAL_SIZE];
     if( j < INTERNAL_SIZE && j < rows){
@@ -239,14 +274,14 @@ def find_col_max_id(x, mat):
     int index = 1;
     if(rows > INTERNAL_SIZE) {
       if(threadIdx.y < INTERNAL_SIZE ){
-        int forwardInd = threadIdx.y + index * INTERNAL_SIZE; 
+        int forwardInd = threadIdx.y + index * INTERNAL_SIZE;
         while(forwardInd < rows) {
           if (buffer[threadIdx.y] < mat[i + forwardInd * leading]) {
             buffer[threadIdx.y] = mat[i + forwardInd * leading];
-            mind[threadIdx.y] = forwardInd; 
+            mind[threadIdx.y] = forwardInd;
           }
           index ++;
-          forwardInd = threadIdx.y + index * INTERNAL_SIZE; 
+          forwardInd = threadIdx.y + index * INTERNAL_SIZE;
         }
       }
     }
@@ -277,6 +312,7 @@ def find_col_max_id(x, mat):
   leading = mat.strides[0]/4
 
   col_max_id(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  timer.end('find_col_max_id')
 
 
 
@@ -285,6 +321,7 @@ def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   Add the element in vec to every element in mat in corresponding rows
   The function behaves exactly like mat + vec in numpy
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
 
@@ -307,12 +344,14 @@ def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
   leading = mat.strides[0]/4
   add_func(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
+  timer.end('add_vec_to_rows')
 
 def add_vec_to_cols(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   '''
   Add the element in vec to every element in mat in corresponding cols
   The function behaves exactly like mat + vec in numpy
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
 
@@ -335,12 +374,14 @@ def add_vec_to_cols(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
   leading = mat.strides[0] / 4
   add_func(F(alpha), vec,  F(beta), mat, dest, I(leading), I(mh), I(mw),  block = block, grid = grid)
+  timer.end('add_vec_to_cols')
 
 
 def div_vec_to_rows(mat, vec, dest = None):
   '''
   Divide the element in corresponding row of matrix by the element in the vec
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
 
@@ -363,6 +404,7 @@ def div_vec_to_rows(mat, vec, dest = None):
   grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
   leading = mat.strides[0] /4
   div_func( vec,  mat, dest, I(leading),I(mh), I(mw), block = block, grid = grid)
+  timer.end('div_vec_to_rows')
 
 
 
@@ -370,6 +412,7 @@ def div_vec_to_cols(mat, vec, dest = None):
   '''
   Divide the element in corresponding column of matrix by the element in the vec
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
 
@@ -392,6 +435,7 @@ def div_vec_to_cols(mat, vec, dest = None):
   grid = (NVBLOCK(mw , 32), NVBLOCK(mh, 32))
   leading = mat.strides[0] /4
   div_func(vec, mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
+  timer.end('div_vec_to_cols')
 
 
 
@@ -402,6 +446,7 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   Unlike other function that only provide small computation, this function raise the
   upper bound for the number of column to 2^16, actually it could be 2^20
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
@@ -412,9 +457,9 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
-    if(i < cols)  
+    if(i < cols)
       buffer[threadIdx.x] = mat[i + j * leading];
     __syncthreads();
 
@@ -450,8 +495,10 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
     grid = (NVBLOCK(mw, INTERNAL_SIZE), mh)
     tmp  = gpuarray.to_gpu(np.zeros((mh, NVBLOCK(mw, INTERNAL_SIZE)) ).astype(np.float32))
     leading = mat.strides[0]/4
-    add_row_sum(mat, F(alpha), tmp, F(beta), I(leading), I(mh),I(mw), block = block, grid = grid) 
+    add_row_sum(mat, F(alpha), tmp, F(beta), I(leading), I(mh),I(mw), block = block, grid = grid)
     add_row_sum_to_vec(vec, tmp)
+
+  timer.end('add_row_sum_to_vec')
 
 
 def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
@@ -462,6 +509,7 @@ def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   Small means the row of the matrix is up to 1024
   and the column, seams like a little big, can be 2048, but the upper bound has  not been tested
   '''
+  timer.start()
   mh, mw = mat.shape
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
@@ -479,7 +527,7 @@ def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
     const int INTERNAL_SIZE = 256;
     int i = blockDim.x * blockIdx.x + threadIdx.x;
     int j = blockDim.y * blockIdx.y + threadIdx.y;
-    
+
     __shared__ float buffer[INTERNAL_SIZE];
     if(j < INTERNAL_SIZE && j < rows)
       buffer[j] = mat[i + j * cols];
@@ -498,7 +546,7 @@ def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
       }
     }
     __syncthreads();
-  
+
     int total = INTERNAL_SIZE > rows ? rows : INTERNAL_SIZE;
     while(total > 1) {
       int halfPoint = ((1+total) >> 1);
@@ -527,12 +575,14 @@ def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   block = (1, mh, 1)
   leading = mat.strides[0] / 4
   add_col_sum_func(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block = block, grid= grid)
+  timer.end('add_col_sum_to_vec')
 
 
 def same_reduce(target, vec):
   '''
   Return the number of same values in the same offset of two vecs
   '''
+  timer.start()
   mod = SourceModule('''
     __global__
     void same(float* tgt, float* vec, float* tmp) {
@@ -541,7 +591,7 @@ def same_reduce(target, vec):
         tmp[i] = 1;
       else
         tmp[i] = 0;
-      
+
     }'''
     )
 
@@ -553,10 +603,11 @@ def same_reduce(target, vec):
   tmp.shape = (1, tmp.size)
   res = gpuarray.to_gpu(np.zeros((1,1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
+  timer.end('same_reduce')
   return int(res.get()[0, 0])
 
 def logreg_cost_row_reduce(mat, label, cost):
-  
+  timer.start()
   mh, mw = mat.shape
   vh, vw = label.shape
   assert(vh == 1 and vw == mh or vw == 1 and vh == mh)
@@ -569,14 +620,16 @@ def logreg_cost_row_reduce(mat, label, cost):
       cost[i] = 0 - __logf(mat[idx]);
     }'''
     )
-    
+
   log_reg_func = mod.get_function('log_reg')
   block = (mh, 1, 1)
   grid = (1, 1)
   log_reg_func(mat, label, cost, np.int32(mat.strides[0]/4), block = block, grid = grid)
+  timer.end('logreg_cost_to_row_reduce')
 
 
 def logreg_cost_col_reduce(mat, label, cost):
+  timer.start()
   mh, mw = mat.shape
   vh, vw = label.shape
   assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
@@ -589,20 +642,22 @@ def logreg_cost_col_reduce(mat, label, cost):
       cost[i] = 0 - __logf(mat[idx]);
     }'''
     )
-    
+
   log_reg_func = mod.get_function('log_reg')
   block = (mw,1,1)
   grid = (1, 1)
   log_reg_func(mat, label, cost, np.int32(mat.strides[0]/4), block = block, grid = grid)
+  timer.end('logreg_cost_to_col_reduce')
 
 
 
 def softmax_bprop(mat, label, grad):
+  timer.start()
   mh, mw = mat.shape
   vh, vw = label.shape
 
   assert(vh == 1 and vw == mw or vw == 1 and vh  == mw)
-  
+
   mod = SourceModule(
       '''
       __global__
@@ -625,36 +680,91 @@ def softmax_bprop(mat, label, grad):
   block = (32, 32, 1)
   grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
   softmax_bprop_func(mat, label, grad, I(mat.strides[0]/4), I(mh), I(mw), block = block, grid = grid)
+  timer.end('softmax_bprop')
 
 def relu_activate(input, output):
+  timer.start()
+  mh, mw = input.shape
+
+  mod = SourceModule('''
+  __global__
+  void relu_activate(float* input, float* output, int leading, int rows, int cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(i >= cols) return ;
+    if(j >= rows) return ;
+
+    int idx = i + j * leading;
+
+    output[idx] = fmaxf(input[idx], 0.0);
+  }'''
+  )
+  relu_activate_func = mod.get_function('relu_activate')
+  block = (32,32,1)
+  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  leading = input.strides[0]/4
+  relu_activate_func(input, output, I(leading), I(mh), I(mw), block = block , grid = grid)
+  '''
   relu_func = ElementwiseKernel(
       'float *x, float *y',
       'y[i] = fmaxf(x[i], 0.0)',
       'relu_activation')
   relu_func(input, output)
+  '''
+  timer.end('relu_activate')
 
 
 def relu_compute_grad(grad, output, outGrad):
+  timer.start()
+  mh, mw = grad.shape
+  mod = SourceModule('''
+  __global__
+  void relu_compute_grad(float * grad, float * output, float* outGrad, int leading, int rows, int
+  cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(i >= cols) return;
+    if(j >= rows) return;
+
+    int idx = i + j * leading;
+    grad[idx] = grad[idx] * (output[idx] > 0.0f);
+    outGrad[idx] = grad[idx];
+  }
+  ''')
+  relu_compute_grad_func = mod.get_function('relu_compute_grad')
+  block = (32, 32, 1)
+  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  leading = grad.strides[0] / 4
+  relu_compute_grad_func(grad, output, outGrad, I(leading), I(mh), I(mw), block = block, grid =
+      grid)
+  '''
   relu_grad_func  = ElementwiseKernel(
       'float *x, float* y, float* z',
       'x[i] = x[i] * (y[i] >  0.0f); z[i] = x[i]',
       'relu_gradient'
       )
   relu_grad_func(grad, output, outGrad)
+  '''
+  timer.end('relu_compute_grad')
 
 def gpu_copy_to(x, y):
+  timer.start()
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
+  timer.end("gpu_copy_to")
 
 def dot(x,y):
+  timer.start()
   if isinstance(x, GPUArray):
     assert isinstance(y, GPUArray)
     if x.shape == (1,):
       assert y.shape[0] == 1
       y *= scalar(x)
-      return y.ravel() 
+      return y.ravel()
     elif y.shape == (1,):
       assert x.shape[1] == 1
-      x *= scalar(y) 
+      x *= scalar(y)
       return x.ravel()
     elif len(x.shape) == 1 and len(y.shape) == 1:
       return scalar(pycuda.gpuarray.dot(x,y))
@@ -670,13 +780,79 @@ def dot(x,y):
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1
         result = result.ravel()
-      return result 
+      timer.end('dot')
+      return result
   else:
     return np.dot(x,y)
 
-def transpose(X):
+def transpose(mat):
+  '''
   if isinstance(X, GPUArray):
-    return scikits.cuda.linalg.transpose(X)
+    timer.start()
+    b = scikits.cuda.linalg.transpose(X)
+    timer.end('transpose')
+    return b
   else:
-    return X.T 
+    return X.T
+  '''
+  timer.start()
+  mh, mw = mat.shape
+  dst = gpuarray.empty((mw, mh), dtype = np.float32)
+  mod = SourceModule('''
+  __global__
+  void transpose(float * src, float* dst, int sleading, int dleading, int srows, int scols) {
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
 
+    if(i >= scols) return ;
+    if(j >= srows) return ;
+
+    int sind = i + j * sleading;
+    int dind = j + i * dleading;
+
+    dst[dind] = src[sind];
+  }'''
+  )
+
+  transpose_func = mod.get_function('transpose')
+  block = (32, 32, 1)
+  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  sleading = mat.strides[0]/4
+  dleading = dst.strides[0]/4
+  transpose_func(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block = block, grid = grid)
+
+  timer.end('transpose')
+  return dst
+
+
+
+def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
+  sh, sw = src.shape
+  vh, vw = v.shape
+
+  assert sh == vh and sw == vw
+
+  mod = SourceModule('''
+  __global__
+  void matrix_add(float* src, float* v, float* dest, float alpha, float beta,  int leading, int
+  rows, int cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(i >= cols) return ;
+    if(j >= rows) return ;
+
+    int idx = i + j * leading;
+
+    dest[idx] = src[idx] * alpha + v[idx] * beta;
+  }'''
+  )
+
+  matrix_add_func = mod.get_function('matrix_add')
+  block = (32, 32, 1)
+  grid = (NVBLOCK(sw, 32), NVBLOCK(sh, 32))
+  leading = src.strides[0] / 4
+  if dest is None:
+    dest = src
+  matrix_add_func(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), block = block , grid =
+      grid)
