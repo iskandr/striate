@@ -157,13 +157,12 @@ class ResponseNormLayer(Layer):
     self.denom = None
 
   def fprop(self, input, output):
-    if not self.denom:
-      self.denom = gpuarray.to_gpu(np.zeros(input.shape).astype(np.float32))
-      cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scale,
-          self.pow)
+    self.denom = gpuarray.to_gpu(np.zeros(input.shape).astype(np.float32))
+    cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scale,
+        self.pow)
 
-      if PFout:
-        printMatrix(output, self.name)
+    if PFout:
+      printMatrix(output, self.name)
 
 
   def bprop(self, grad,input, output, outGrad):
@@ -391,6 +390,14 @@ class FastNet(object):
       input_shape = self.inputShapes[-1]
       return SoftmaxLayer(name, input_shape)
 
+    if ld['type'] == 'rnorm':
+      name = ld['name']
+      pow = ld['pow']
+      size = ld['size']
+      scale = ld['scale']
+
+      img_shape = self.imgShapes[-1]
+      return ResponseNormLayer(name, img_shape, pow, size, scale)
 
 
   def initLayer(self, m):

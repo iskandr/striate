@@ -14,7 +14,7 @@ cudaconv2_wrap.cu: cudaconv2.i
 	swig -python -c++ -o cudaconv2_wrap.cu ${INCLUDES} cudaconv2.i 
 
 %.o : %.cu
-	nvcc -O0 -G -g -c -o $@ $^  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES}
+	nvcc -O3 -g -c -o $@ $^  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES}
 
 clean:
 	rm -f *.o *.so
