@@ -10,7 +10,7 @@ def load(filename):
 
 
 class DataProvider(object):
-  def __init__(self, data_dir='.', batch_size = 64):
+  def __init__(self, data_dir='.'):
     self.data_dir = data_dir
     self.data_file = os.path.join(data_dir, 'data_batch_1')
     self.meta_file = os.path.join(data_dir, 'batches.meta')
@@ -18,7 +18,6 @@ class DataProvider(object):
     self.batch_meta = load(self.meta_file)
     self.batch_data = load(self.data_file)
   
-    self.batch_size = batch_size
     self.batch_data['data'] = np.require((self.batch_data['data'] - self.batch_meta['data_mean']),
         dtype = np.single, requirements = 'C')
     self.index = 0
@@ -27,7 +26,6 @@ class DataProvider(object):
     
 
   def get_batch_data(self):
-  
     if self.index + self.batch_size > self.total_num:
       self.index = 0
     d = {}

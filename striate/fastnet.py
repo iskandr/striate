@@ -47,6 +47,11 @@ class Layer(object):
   def scaleLearningRate(self, l):
     pass
 
+  def get_output_shape(self):
+    assert False, 'No implementation for getoutputshape'
+
+  def change_batch_size(self, batch_size):
+    self.batchSize = batch_size
 
 class ConvLayer(Layer):
   def __init__(self , name, filter_shape, image_shape,  padding = 2, stride = 1, initW = 0.01, initB =
@@ -66,9 +71,7 @@ class ConvLayer(Layer):
 
     self.outputSize = 1 + int(((2 * self.padding + self.imgSize - self.filterSize) / float(self.stride)))
     self.modules = self.outputSize ** 2
-    self.outputElt = self.modules * self.numFilter * self.batchSize
 
-    self.tmp = gpuarray.empty((self.numFilter, self.outputElt/self.numFilter), dtype=np.float32)
     if weight is None:
       self.filter = gpuarray.to_gpu(np.random.randn(self.filterSize * self.filterSize
         * self.numColor, self.numFilter ).astype(np.float32) * self.initW)
@@ -82,12 +85,21 @@ class ConvLayer(Layer):
 
     self.filterGrad = gpuarray.to_gpu(np.zeros(self.filter.shape).astype(np.float32))
     self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
+
+
+  def get_single_img_size(self):
+    return self.modules * self.numFilter
+
+  def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numFilter, self.outputSize, self.outputSize)
+    return self.outputShape
+
 
   def fprop(self, input, output):
     cudaconv2.convFilterActs(input, self.filter, output, self.imgSize, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
+    self.tmp = gpuarray.empty((self.numFilter, self.get_single_img_size() * self.batchSize/self.numFilter), dtype=np.float32)
     gpu_copy_to(output, self.tmp)
     add_vec_to_rows(self.tmp, self.bias)
     gpu_copy_to(self.tmp, output)
@@ -128,7 +140,11 @@ class MaxPoolLayer(Layer):
     self.batchSize, self.numColor, self.imgSize, _  = image_shape
 
     self.outputSize = ceil(self.imgSize - self.poolSize -self.start, self.stride) + 1
+
+
+  def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
+    return self.outputShape
 
   def fprop(self, input, output):
     cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
@@ -153,8 +169,11 @@ class ResponseNormLayer(Layer):
     self.pow = pow
     self.size = size
     self.scale = scale
-    self.outputShape = image_shape
     self.denom = None
+
+  def get_output_shape(self):
+    self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
+    return self.outputShape
 
   def fprop(self, input, output):
     self.denom = gpuarray.to_gpu(np.zeros(input.shape).astype(np.float32))
@@ -200,7 +219,9 @@ class FCLayer(Layer):
     self.weightGrad = gpuarray.to_gpu(np.zeros(self.weight.shape).astype(np.float32))
     self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
 
+  def get_output_shape(self):
     self.outputShape = (self.batchSize, self.outputSize, 1, 1)
+    return self.outputShape
 
   def fprop(self, input, output ):
     gpu_copy_to( output.mul_add(0, dot(self.weight, input), 1), output)
@@ -235,8 +256,11 @@ class SoftmaxLayer(Layer):
     self.cost = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
     self.correct = 0
     self.total = 0
-    self.outputShape = (self.batchSize, self.outputSize, 1, 1)
     self.batchCorrect = 0
+
+  def get_output_shape(self):
+    self.outputShape = (self.batchSize, self.outputSize, 1, 1)
+    return self.outputShape
 
   def fprop(self, input, output):
     max = gpuarray.to_gpu(np.zeros((1, self.batchSize)).astype(np.float32))
@@ -295,8 +319,12 @@ class NeuronLayer(Layer):
   def __init__(self, name, image_shape,  type = 'relu'):
     Layer.__init__(self, name, type)
     self.neuron = neuronDict[type]()
-    self.batchSize = image_shape[0]
-    self.outputShape = image_shape
+    self.batchSize, self.numColor, self.imgSize, _= image_shape
+
+
+  def get_output_shape(self):
+    self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
+    return self.outputShape
 
   def fprop(self, input, output):
     self.neuron.activate(input, output)
@@ -433,10 +461,11 @@ class FastNet(object):
   def append_layer(self, layer):
     self.layers.append(layer)
 
-    row = layer.outputShape[1] * layer.outputShape[2] * layer.outputShape[3]
-    col = layer.batchSize
+    outputShape = layer.get_output_shape()
+    row = outputShape[1] * outputShape[2] * outputShape[3]
+    col = outputShape[0]
     self.inputShapes.append((row, col))
-    self.imgShapes.append(layer.outputShape)
+    self.imgShapes.append(outputShape)
 
     self.outputs.append(gpuarray.to_gpu(np.zeros((row, col)).astype(np.float32)))
     self.grads.append(gpuarray.to_gpu(np.zeros((self.inputShapes[-2])).astype(np.float32)))
@@ -480,6 +509,28 @@ class FastNet(object):
     return 1.0 * outputLayer.correct / outputLayer.total
 
   def train_batch(self, data, label):
+    input = data
+    if input.shape[1] != self.batchSize:
+      self.batchSize = input.shape[1]
+      for l in self.layers:
+        l.change_batch_size(self.batchSize)
+      self.inputShapes = None
+      self.imgShapes = None
+      self.outputs = []
+      self.grads= []
+
+      self.imgShapes = [(self.batchSize, self.numColor, self.imgSize, self.imgSize)]
+      self.inputShapes = [( self.numColor * (self.imgSize ** 2), self.batchSize)]
+      for layer in self.layers:
+        outputShape = layer.get_output_shape()
+        row = outputShape[1] * outputShape[2] * outputShape[3]
+        col = outputShape[0]
+        self.inputShapes.append((row, col))
+        self.imgShapes.append(outputShape)
+
+        self.outputs.append(gpuarray.to_gpu(np.zeros((row, col)).astype(np.float32)))
+        self.grads.append(gpuarray.to_gpu(np.zeros((self.inputShapes[-2])).astype(np.float32)))
+
     outputShape = self.inputShapes[-1]
     output = gpuarray.to_gpu(np.zeros(outputShape).astype(np.float32))
 
