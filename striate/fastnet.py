@@ -12,13 +12,6 @@ from util import *
 
 import sys
 
-def ceil(x, base):
-  if x / base * base == x:
-    return x / base
-  else:
-    return x / base + 1
-
-
 def printMatrix(x, name):
   print name
   a = x.get()[:, 0]
@@ -83,18 +76,18 @@ class ConvLayer(Layer):
     self.modules = self.outputSize ** 2
 
     if weight is None:
-      self.filter = gpuarray.to_gpu(np.random.randn(self.filterSize * self.filterSize
-        * self.numColor, self.numFilter ).astype(np.float32) * self.initW)
+      self.filter = gpuarray.to_gpu(np.random.randn(self.filterSize * self.filterSize *
+        self.numColor, self.numFilter) * self.initW).astype(np.float32)
     else:
-      self.filter = gpuarray.to_gpu(weight.astype(np.float32))
+      self.filter = gpuarray.to_gpu(weight).astype(np.float32)
 
     if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(self.numFilter, 1).astype(np.float32) * initB)
+      self.bias = gpuarray.to_gpu(np.random.randn(self.numFilter, 1) * initB).astype(np.float32)
     else:
-      self.bias = gpuarray.to_gpu(bias.astype(np.float32))
+      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
 
-    self.filterGrad = gpuarray.to_gpu(np.zeros(self.filter.shape).astype(np.float32))
-    self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
+    self.filterGrad = gpuarray.zeros_like(self.filter)
+    self.biasGrad = gpuarray.zeros_like(self.bias)
 
   def dump(self):
     d = Layer.dump(self)
@@ -140,8 +133,8 @@ class ConvLayer(Layer):
       printMatrix(outGrad, self.name)
 
   def update(self):
-    gpu_copy_to(self.filter.mul_add(1, self.filterGrad, self.epsW / self.batchSize), self.filter)
-    gpu_copy_to(self.bias.mul_add(1, self.biasGrad, self.epsB /self.batchSize), self.bias)
+    self.filter = self.filter.mul_add(1, self.filterGrad, self.epsW / self.batchSize)
+    self.bias = self.bias.mul_add(1, self.biasGrad, self.epsB /self.batchSize)
 
   def scaleLearningRate(self, lr):
     self.epsW *= lr
@@ -191,7 +184,7 @@ class ResponseNormLayer(Layer):
     return self.outputShape
 
   def fprop(self, input, output):
-    self.denom = gpuarray.to_gpu(np.zeros(input.shape).astype(np.float32))
+    self.denom = gpuarray.zeros_like(input)
     cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scale,
         self.pow)
 
@@ -225,18 +218,19 @@ class FCLayer(Layer):
 
     self.weightShape = (self.outputSize, self.inputSize)
     if weight is None:
-      self.weight = gpuarray.to_gpu(np.random.randn(*self.weightShape).astype(np.float32) *
-          self.initW)
+      self.weight = gpuarray.to_gpu(np.random.randn(*self.weightShape) *
+          self.initW).astype(np.float32)
     else:
-      self.weight = gpuarray.to_gpu(np.transpose(weight.astype(np.float32)))
+      self.weight = gpuarray.to_gpu(weight).astype(np.float32)
+      self.weight = transpose(self.weight)
 
     if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(self.outputSize, 1).astype(np.float32) *
-          self.initB)
+      self.bias = gpuarray.to_gpu(np.random.randn(self.outputSize, 1) *
+          self.initB).astype(np.float32)
     else:
-      self.bias = gpuarray.to_gpu(bias.astype(np.float32))
-    self.weightGrad = gpuarray.to_gpu(np.zeros(self.weight.shape).astype(np.float32))
-    self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
+      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
+    self.weightGrad = gpuarray.zeros_like(self.weight)
+    self.biasGrad = gpuarray.zeros_like(self.bias)
 
 
   def dump(self):
@@ -259,7 +253,7 @@ class FCLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     gpu_copy_to(outGrad.mul_add(0, dot(transpose(self.weight), grad), 1), outGrad)
-    gpu_copy_to(self.weightGrad.mul_add(0, dot(grad, transpose(input)), 1), self.weightGrad)
+    self.weightGrad = self.weightGrad.mul_add(0, dot(grad, transpose(input)), 1)
     add_row_sum_to_vec(self.biasGrad, grad, alpha = 0.0)
 
     if PBout:
@@ -274,13 +268,12 @@ class FCLayer(Layer):
     self.epsB *= l
 
 
-
 class SoftmaxLayer(Layer):
   def __init__(self, name, input_shape):
     Layer.__init__(self, name, "softmax")
     self.inputSize, self.batchSize = input_shape
     self.outputSize = self.inputSize
-    self.cost = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
+    self.cost = gpuarray.zeros((self.batchSize, 1), dtype = np.float32)
     self.batchCorrect = 0
 
   def get_output_shape(self):
@@ -288,11 +281,11 @@ class SoftmaxLayer(Layer):
     return self.outputShape
 
   def fprop(self, input, output):
-    max = gpuarray.to_gpu(np.zeros((1, self.batchSize)).astype(np.float32))
+    max = gpuarray.zeros((1, self.batchSize), dtype = np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha = -1)
     gpu_copy_to(cumath.exp(output), output)
-    sum = gpuarray.to_gpu(np.zeros(max.shape).astype(np.float32))
+    sum = gpuarray.zeros(max.shape, dtype = np.float32)
     add_col_sum_to_vec(sum, output, alpha = 0)
     div_vec_to_cols(output, sum)
 
@@ -300,7 +293,7 @@ class SoftmaxLayer(Layer):
       printMatrix(output, self.name)
 
   def logreg_cost(self, label, output):
-    maxid = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
+    maxid = gpuarray.zeros((self.batchSize, 1), dtype = np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
 
@@ -510,8 +503,8 @@ class FastNet(object):
     self.inputShapes.append((row, col))
     self.imgShapes.append(outputShape)
 
-    self.outputs.append(gpuarray.to_gpu(np.zeros((row, col)).astype(np.float32)))
-    self.grads.append(gpuarray.to_gpu(np.zeros((self.inputShapes[-2])).astype(np.float32)))
+    self.outputs.append(gpuarray.zeros((row, col), dtype = np.float32))
+    self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype = np.float32))
 
 
   def fprop(self, data, probs):
@@ -561,6 +554,9 @@ class FastNet(object):
   def train_batch(self, data, label, train = TRAIN):
     input = data
     self.numCase += input.shape[1]
+    ########
+    # The last minibatch of data_batch file may not be 1024
+    ########
     if input.shape[1] != self.batchSize:
       self.batchSize = input.shape[1]
       for l in self.layers:
@@ -583,16 +579,15 @@ class FastNet(object):
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
     outputShape = self.inputShapes[-1]
-    output = gpuarray.to_gpu(np.zeros(outputShape).astype(np.float32))
+    output = gpuarray.zeros(outputShape, dtype=np.float32)
 
     if not isinstance(data, GPUArray):
       assert(isinstance(data, np.ndarray))
-      assert data.dtype == np.float32
-      data = gpuarray.to_gpu(np.require(data, requirements='F')) #.astype(np.float32))
+      data = gpuarray.to_gpu(data.astype(np.float32)) #.astype(np.float32))
 
     if not isinstance(label, GPUArray):
       assert(isinstance(label, np.ndarray))
-      label = gpuarray.to_gpu(label).astype(np.float32)
+      label = gpuarray.to_gpu(label.astype(np.float32))
 
     self.fprop(data, output)
     cost, correct = self.get_cost(label, output)

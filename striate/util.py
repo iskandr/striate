@@ -10,8 +10,8 @@ from pycuda.compiler import SourceModule
 
 from scikits.cuda import cublas
 import cudaconv2
-from scikits.cuda import linalg
-linalg.init()
+#from scikits.cuda import linalg
+#linalg.init()
 
 try:
   cublas.cublasInit()
@@ -52,14 +52,16 @@ class CompiledSource(object):
     self.kernel(*args, **kw)
 
 
-
-def I(i): return np.int32(i)
-def F(f): return np.float32(f)
-def NVBLOCK(x, base):
+def ceil(x, base):
   if x / base * base == x:
     return x / base
   else:
-    return x /base + 1
+    return x / base + 1
+
+
+
+def I(i): return np.int32(i)
+def F(f): return np.float32(f)
 
 INTERNAL_SIZE = 256
 timer = Timer()
@@ -586,7 +588,7 @@ def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   if dest is None:
     dest = mat
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   leading = mat.strides[0]/4
   _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
   timer.end('add_vec_to_rows')
@@ -605,7 +607,7 @@ def add_vec_to_cols(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   leading = mat.strides[0] / 4
   _add_vec_to_cols_(F(alpha), vec,  F(beta), mat, dest, I(leading), I(mh), I(mw),  block = block, grid = grid)
   timer.end('add_vec_to_cols')
@@ -622,7 +624,7 @@ def div_vec_to_rows(mat, vec, dest = None):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   leading = mat.strides[0] /4
   _div_vec_to_rows_( vec,  mat, dest, I(leading),I(mh), I(mw), block = block, grid = grid)
   timer.end('div_vec_to_rows')
@@ -640,7 +642,7 @@ def div_vec_to_cols(mat, vec, dest = None):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw , 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw , 32), ceil(mh, 32))
   leading = mat.strides[0] /4
   _div_vec_to_cols_(vec, mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
   timer.end('div_vec_to_cols')
@@ -658,22 +660,22 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   mh, mw = mat.shape
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
-  #cudaconv2.sum(mat, 1, vec)
-  if mat.shape[1] <= INTERNAL_SIZE:
-    grid = (1, mh)
-    block = (mw, 1,  1)
-    leading = mat.strides[0] /4
-    _add_row_sum_to_vec_(mat, F(alpha), vec, F(beta),I(leading), I(mh), I(mw), block = block, grid= grid)
-  else:
-    block = (INTERNAL_SIZE, 1, 1)
-    grid = (NVBLOCK(mw, INTERNAL_SIZE), mh)
-    #tmp  = gpuarray.to_gpu(np.zeros((mh, NVBLOCK(mw, INTERNAL_SIZE)) ).astype(np.float32))
-    tmp = gpuarray.zeros((mh, NVBLOCK(mw, INTERNAL_SIZE)), dtype=np.float32)
-    #print 'TOGPU', tmp.shape
+  cudaconv2.sum(mat, 1, vec)
+  #if mat.shape[1] <= INTERNAL_SIZE:
+  #  grid = (1, mh)
+  #  block = (mw, 1,  1)
+  #  leading = mat.strides[0] /4
+  #  _add_row_sum_to_vec_(mat, F(alpha), vec, F(beta),I(leading), I(mh), I(mw), block = block, grid= grid)
+  #else:
+  #  block = (INTERNAL_SIZE, 1, 1)
+  #  grid = (ceil(mw, INTERNAL_SIZE), mh)
+  #  #tmp  = gpuarray.to_gpu(np.zeros((mh, ceil(mw, INTERNAL_SIZE)) ).astype(np.float32))
+  #  tmp = gpuarray.zeros((mh, ceil(mw, INTERNAL_SIZE)), dtype=np.float32)
+  #  #print 'TOGPU', tmp.shape
 
-    leading = mat.strides[0]/4
-    _add_row_sum_to_vec_(mat, F(alpha), tmp, F(beta), I(leading), I(mh),I(mw), block = block, grid = grid)
-    add_row_sum_to_vec(vec, tmp)
+  #  leading = mat.strides[0]/4
+  #  _add_row_sum_to_vec_(mat, F(alpha), tmp, F(beta), I(leading), I(mh),I(mw), block = block, grid = grid)
+  #  add_row_sum_to_vec(vec, tmp)
   timer.end('add_row_sum_to_vec')
 
 
@@ -745,7 +747,7 @@ def softmax_bprop(mat, label, grad):
   assert(vh == 1 and vw == mw or vw == 1 and vh  == mw)
 
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   _softmax_bprop_(mat, label, grad, I(mat.strides[0]/4), I(mh), I(mw), block = block, grid = grid)
   timer.end('softmax_bprop')
 
@@ -754,7 +756,7 @@ def relu_activate(input, output):
   mh, mw = input.shape
 
   block = (32,32,1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   leading = input.strides[0]/4
   _relu_activate_(input, output, I(leading), I(mh), I(mw), block = block , grid = grid)
   timer.end('relu_activate')
@@ -765,7 +767,7 @@ def relu_compute_grad(grad, output, outGrad):
   mh, mw = grad.shape
 
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   leading = grad.strides[0] / 4
   _relu_compute_grad_(grad, output, outGrad, I(leading), I(mh), I(mw), block = block, grid =
       grid)
@@ -799,12 +801,12 @@ def dot(x,y):
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
 
-      result = linalg.dot(x, y)
-      #result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
-      #sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
-      #      x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
-      #      result.gpudata, result.shape[1])
-      #result = transpose(result)
+      #result = linalg.dot(x, y)
+      result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
+      sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
+            x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
+            result.gpudata, result.shape[1])
+      result = transpose(result)
 
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1
@@ -820,7 +822,7 @@ def transpose(mat):
   dst = gpuarray.empty((mw, mh), dtype = np.float32)
 
   block = (32, 32, 1)
-  grid = (NVBLOCK(mw, 32), NVBLOCK(mh, 32))
+  grid = (ceil(mw, 32), ceil(mh, 32))
   sleading = mat.strides[0]/4
   dleading = dst.strides[0]/4
   _transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block = block, grid = grid)
@@ -837,7 +839,7 @@ def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
   assert sh == vh and sw == vw
 
   block = (32, 32, 1)
-  grid = (NVBLOCK(sw, 32), NVBLOCK(sh, 32))
+  grid = (ceil(sw, 32), ceil(sh, 32))
   leading = src.strides[0] / 4
   if dest is None:
     dest = src
