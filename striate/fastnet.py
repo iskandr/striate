@@ -27,7 +27,8 @@ def printMatrix(x, name):
 
 PFout = False
 PBout = False
-
+TEST = 0
+TRAIN = 1
 
 class Layer(object):
 
@@ -52,6 +53,15 @@ class Layer(object):
 
   def change_batch_size(self, batch_size):
     self.batchSize = batch_size
+
+  def dump(self):
+    d = {}
+    attr = [att for att in dir(self) if not att.startswith('__')]
+    for att in attr:
+      if type(getattr(self, att)) != type(self.__init__):
+        d[att] = getattr(self, att)
+    return d
+
 
 class ConvLayer(Layer):
   def __init__(self , name, filter_shape, image_shape,  padding = 2, stride = 1, initW = 0.01, initB =
@@ -85,6 +95,13 @@ class ConvLayer(Layer):
 
     self.filterGrad = gpuarray.to_gpu(np.zeros(self.filter.shape).astype(np.float32))
     self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
+
+  def dump(self):
+    d = Layer.dump(self)
+    del d['filterGrad'], d['biasGrad'] , d['tmp']
+    d['filter'] = self.filter.get()
+    d['bias'] = self.bias.get()
+    return d
 
 
   def get_single_img_size(self):
@@ -141,7 +158,6 @@ class MaxPoolLayer(Layer):
 
     self.outputSize = ceil(self.imgSize - self.poolSize -self.start, self.stride) + 1
 
-
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
     return self.outputShape
@@ -159,7 +175,6 @@ class MaxPoolLayer(Layer):
 
     if PBout:
       printMatrix(outGrad, self.name)
-
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, image_shape, pow, size, scale):
@@ -191,6 +206,10 @@ class ResponseNormLayer(Layer):
     if PBout:
       printMatrix(outGrad, self.name)
 
+  def dump(self):
+    d = Layer.dump(self)
+    del d['denom']
+    return d
 
 class FCLayer(Layer):
   def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW = 0.01, initB = 0.0, weight =
@@ -218,6 +237,14 @@ class FCLayer(Layer):
       self.bias = gpuarray.to_gpu(bias.astype(np.float32))
     self.weightGrad = gpuarray.to_gpu(np.zeros(self.weight.shape).astype(np.float32))
     self.biasGrad = gpuarray.to_gpu(np.zeros(self.bias.shape).astype(np.float32))
+
+
+  def dump(self):
+    d = Layer.dump(self)
+    del d['weightGrad'], d['biasGrad']
+    d['weight'] = self.weight.get()
+    d['bias'] = self.bias.get()
+    return d
 
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.outputSize, 1, 1)
@@ -254,8 +281,6 @@ class SoftmaxLayer(Layer):
     self.inputSize, self.batchSize = input_shape
     self.outputSize = self.inputSize
     self.cost = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
-    self.correct = 0
-    self.total = 0
     self.batchCorrect = 0
 
   def get_output_shape(self):
@@ -278,18 +303,22 @@ class SoftmaxLayer(Layer):
     maxid = gpuarray.to_gpu(np.zeros((self.batchSize, 1)).astype(np.float32))
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
-    #print self.batchCorrect
 
-    self.correct += self.batchCorrect
     logreg_cost_col_reduce(output, label, self.cost)
-    self.total += output.shape[1]
-    self.batchCorrect = 1.0 * self.batchCorrect / self.batchSize
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)
 
     if PBout:
       printMatrix(outGrad, self.name)
+
+  def get_correct(self):
+    return  1.0 * self.batchCorrect / self.batchSize
+
+  def dump(self):
+    d = Layer.dump(self)
+    del d['cost']
+    return d
 
 
 class Neuron:
@@ -336,13 +365,11 @@ class NeuronLayer(Layer):
     self.neuron.computeGrad(grad, output, outGrad)
     if PBout:
       printMatrix(outGrad, self.name)
-  def update(self):
-    pass
 
-  def scaleLearningRate(self, l):
-    pass
-
-
+  def dump(self):
+    d = Layer.dump(self)
+    del d['neuron']
+    return d
 
 class FastNet(object):
   def __init__(self, learningRate, imgShape, numOutput, initModel = None, autoAdd = True):
@@ -354,16 +381,17 @@ class FastNet(object):
     self.layers = []
     self.outputs = []
     self.grads = []
-    self.batchId = 0
+
+    self.numCase = self.cost = self.correct = 0.0
 
     if initModel:
       self.initLayer(initModel)
       return
 
     if autoAdd:
-      self.initLayer(numOutput)
+      self.autoAddLayer(numOutput)
 
-  def makeLayer(self, ld):
+  def makeLayerFromCUDACONVNET(self, ld):
     if ld['type'] == 'conv':
       numFilter = ld['filters']
       filterSize = ld['filterSize'][0]
@@ -431,24 +459,39 @@ class FastNet(object):
   def initLayer(self, m):
     layers = m['model_state']['layers']
     for l in layers:
-      layer = self.makeLayer(l)
+      layer = self.makeLayerFromCUDACONVNET(l)
       if layer:
         layer.scaleLearningRate(self.learningRate)
         self.append_layer(layer)
 
   def autoAddLayer(self, n_out):
-    conv1 = ConvLayer('conv1', filter_shape = (64, 3, 5, 5), image_shape = self.imgShapes[-1])
+    conv1 = ConvLayer('conv1', filter_shape = (64, 3, 5, 5), image_shape = self.imgShapes[-1],
+        padding = 2, stride = 1, initW = 0.0001, epsW = 0.001, epsB = 0.002)
     conv1.scaleLearningRate(self.learningRate)
     self.append_layer(conv1)
 
-    relu = NeuronLayer('conv1_neuron', self.imgShapes[-1])
-    self.append_layer(relu)
+    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1])
+    self.append_layer(conv1_relu)
 
-    pool1 = MaxPoolLayer('pool1', self.imgShapes[-1])
+    pool1 = MaxPoolLayer('pool1', self.imgShapes[-1], poolSize = 3, stride = 2, start = 0)
     self.append_layer(pool1)
 
     rnorm1 = ResponseNormLayer('rnorm1', self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
     self.append_layer(rnorm1)
+
+    conv2 = ConvLayer('conv2',filter_shape = (64, 64, 5, 5) , image_shape = self.imgShapes[-1],
+        padding = 2, stride = 1, initW=0.01, epsW = 0.001, epsB = 0.002)
+    conv2.scaleLearningRate(self.learningRate)
+    self.append_layer(conv2)
+
+    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1])
+    self.append_layer(conv2_relu)
+
+    rnorm2 = ResponseNormLayer('rnorm2', self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
+    self.append_layer(rnorm2)
+
+    pool2 = MaxPoolLayer('pool2', self.imgShapes[-1], poolSize= 3, start = 0, stride = 2)
+    self.append_layer(pool2)
 
     fc1 = FCLayer('fc', self.inputShapes[-1], n_out)
     fc1.scaleLearningRate(self.learningRate)
@@ -499,17 +542,25 @@ class FastNet(object):
     for l in self.layers:
       l.update()
 
-  def get_batch_information(self, label, output):
+  def get_cost(self, label, output):
     outputLayer = self.layers[-1]
     outputLayer.logreg_cost(label, output)
-    return outputLayer.cost, outputLayer.batchCorrect
+    return outputLayer.cost.get().sum(), outputLayer.batchCorrect
+
+  def get_batch_information(self):
+    cost = self.cost
+    numCase = self.numCase
+    correct = self.correct
+    self.cost = self.numCase = self.correct = 0.0
+    return cost/numCase , correct/ numCase, int(numCase)
 
   def get_correct(self):
     outputLayer = self.layers[-1]
-    return 1.0 * outputLayer.correct / outputLayer.total
+    return outputLayer.get_correct()
 
-  def train_batch(self, data, label):
+  def train_batch(self, data, label, train = TRAIN):
     input = data
+    self.numCase += input.shape[1]
     if input.shape[1] != self.batchSize:
       self.batchSize = input.shape[1]
       for l in self.layers:
@@ -543,9 +594,16 @@ class FastNet(object):
       label = gpuarray.to_gpu(label.astype(np.float32))
 
     self.fprop(data, output)
-    printMatrix(output, 'output')
-    cost, batchCorrect = self.get_batch_information(label, output)
-    #print 'Batch', self.batchId, ':', batchCorrect * 100 , '%'
-    self.batchId += 1
-    self.bprop(data, label, output)
-    self.update()
+    cost, correct = self.get_cost(label, output)
+    self.cost += cost
+    self.correct += correct
+    if train == TRAIN:
+      self.bprop(data, label, output)
+      self.update()
+
+  def get_dumped_layers(self):
+    layers = []
+    for l in self.layers:
+      layers.append(l.dump() )
+
+    return layers
