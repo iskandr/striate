@@ -231,7 +231,7 @@ class FCLayer(Layer):
       self.weight = gpuarray.to_gpu(np.transpose(weight.astype(np.float32)))
 
     if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(1, self.outputSize).astype(np.float32) *
+      self.bias = gpuarray.to_gpu(np.random.randn(self.outputSize, 1).astype(np.float32) *
           self.initB)
     else:
       self.bias = gpuarray.to_gpu(bias.astype(np.float32))
@@ -579,19 +579,20 @@ class FastNet(object):
         self.inputShapes.append((row, col))
         self.imgShapes.append(outputShape)
 
-        self.outputs.append(gpuarray.to_gpu(np.zeros((row, col)).astype(np.float32)))
-        self.grads.append(gpuarray.to_gpu(np.zeros((self.inputShapes[-2])).astype(np.float32)))
+        self.outputs.append(gpuarray.zeros((row, col),dtype=np.float32))
+        self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
     outputShape = self.inputShapes[-1]
     output = gpuarray.to_gpu(np.zeros(outputShape).astype(np.float32))
 
     if not isinstance(data, GPUArray):
       assert(isinstance(data, np.ndarray))
-      data = gpuarray.to_gpu(data.astype(np.float32))
+      assert data.dtype == np.float32
+      data = gpuarray.to_gpu(np.require(data, requirements='F')) #.astype(np.float32))
 
     if not isinstance(label, GPUArray):
       assert(isinstance(label, np.ndarray))
-      label = gpuarray.to_gpu(label.astype(np.float32))
+      label = gpuarray.to_gpu(label).astype(np.float32)
 
     self.fprop(data, output)
     cost, correct = self.get_cost(label, output)

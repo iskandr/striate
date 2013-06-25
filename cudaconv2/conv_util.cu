@@ -33,6 +33,10 @@
 
 using namespace std;
 
+void sum(NVMatrix& src, int axis, NVMatrix& target) {
+  src._aggregate(axis, target, NVMatrixAggs::Sum(), NVMatrixBinaryOps::Second());
+}
+
 __device__ inline float square(const float a) {
   return a * a;
 }

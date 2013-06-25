@@ -66,5 +66,5 @@ if __name__ == "__main__":
   data_dir = '/hdfs/cifar/data/cifar-10-python'
   dp = DataProvider(data_dir, [1, 2, 3, 4,5 ])
   for i in range(12):
-    epoch, data = dp.get_next_batch()
+    epoch, batch, data = dp.get_next_batch()
     print epoch

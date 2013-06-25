@@ -161,6 +161,10 @@ NVMatrix_swigregister = _cudaconv2.NVMatrix_swigregister
 NVMatrix_swigregister(NVMatrix)
 
 
+def sum(*args):
+  return _cudaconv2.sum(*args)
+sum = _cudaconv2.sum
+
 def addVector(*args):
   return _cudaconv2.addVector(*args)
 addVector = _cudaconv2.addVector

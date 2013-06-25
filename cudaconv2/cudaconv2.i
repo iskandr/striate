@@ -39,7 +39,7 @@
 %include "cudaconv2.cuh"
 %include "nvmatrix.cuh"
 
-
+void sum(NVMatrix& src, int axis, NVMatrix& target);
 void addVector(NVMatrix& target, NVMatrix& vec);
 void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int outputsX);
