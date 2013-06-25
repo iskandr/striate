@@ -4,17 +4,11 @@ import pycuda
 import pycuda.autoinit
 from pycuda import gpuarray
 from pycuda.gpuarray import GPUArray
-import scikits.cuda
-import scikits.cuda.linalg
 from pycuda.elementwise import ElementwiseKernel
-
-scikits.cuda.linalg.init()
-
-import scikits.cuda.cublas as cublas
-cublas_handle =  cublas.cublasCreate()
-
-
 from pycuda.compiler import SourceModule
+
+from scikits.cuda import cublas
+cublas.cublasInit()
 
 
 class Timer:
@@ -776,7 +770,10 @@ def dot(x,y):
       if len(y.shape) == 1:
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
-      result = scikits.cuda.linalg.dot(x,y)
+      
+      result = GPUArray((x.shape[0], y.shape[1]), dtype=x.dtype)
+      cublas.cublasSgemm('n', 'n', x.shape[0], y.shape[1], x.shape[1], 1.0, 
+                         x.gpudata, x.shape[0], y.gpudata, y.shape[0], 0.0, result.gpudata, result.shape[0])
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1
         result = result.ravel()
