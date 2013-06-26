@@ -831,6 +831,13 @@ def transpose(mat):
   return dst
 
 
+def printMatrix(x, name):
+  print name
+  a = x.get()[:, 0]
+  for i in a:
+    print '%.15f ' % i
+
+
 
 def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
   sh, sw = src.shape

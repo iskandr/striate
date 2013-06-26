@@ -31,7 +31,7 @@ class Trainer:
     self.n_out = n_out
     self.regex = re.compile('^test%d-(\d+)\.(\d+)$' % self.test_id)
 
-    self.train_dp = ParallelDataProvider(self.batch_size, self.data_dir, self.train_range)
+    self.train_dp = DataProvider(self.batch_size, self.data_dir, self.train_range)
     self.test_dp = DataProvider(self.batch_size, self.data_dir, self.test_range)
 
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
@@ -103,14 +103,13 @@ class Trainer:
 
 
   def train(self):
-    self.train_dp.get_next_batch()
-    self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.wait()
+    self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()#self.train_dp.wait()
     while self.curr_epoch <= self.num_epoch:
       start = time.time()
       self.num_train_minibatch = ceil(self.train_data['data'].shape[1], self.batch_size)
 
       # when loading data, training at the same time
-      self.train_dp.get_next_batch()
+
 
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
@@ -134,7 +133,7 @@ class Trainer:
         self.save_checkpoint()
         print '------------'
 
-      self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.wait()
+      self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()#self.train_dp.wait()
 
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
@@ -152,7 +151,7 @@ if __name__ == '__main__':
   test_freq = 5
   save_freq = 10
   batch_size = 128
-  num_epoch = 25
+  num_epoch = 2
 
   image_size = 32
   image_color = 3
@@ -163,3 +162,5 @@ if __name__ == '__main__':
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out)
 
   trainer.train()
+
+  timer.report()
