@@ -7,7 +7,7 @@ from pycuda import gpuarray
 from pycuda.gpuarray import GPUArray
 from pycuda.elementwise import ElementwiseKernel
 from pycuda.compiler import SourceModule
-
+import cPickle
 from scikits.cuda import cublas
 import cudaconv2
 #from scikits.cuda import linalg
@@ -57,6 +57,11 @@ def ceil(x, base):
     return x / base
   else:
     return x / base + 1
+
+def load(filename):
+  with open(filename, 'rb') as f:
+    model = cPickle.load(f)
+  return model
 
 
 
