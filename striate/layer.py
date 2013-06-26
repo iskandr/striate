@@ -106,9 +106,6 @@ class ConvLayer(Layer):
     add_vec_to_rows(self.tmp, self.bias)
     gpu_copy_to(self.tmp, output)
 
-    if PFout:
-      printMatrix(output, self.name)
-
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convImgActs(grad, self.filter, outGrad, self.imgSize, self.imgSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1, 0.0, 1.0)
@@ -121,12 +118,9 @@ class ConvLayer(Layer):
     gpu_copy_to(grad,self.tmp)
     add_row_sum_to_vec(self.biasGrad, self.tmp)
 
-    if PBout:
-      printMatrix(outGrad, self.name)
-
   def update(self):
-    self.filter = self.filter.mul_add(1, self.filterGrad, self.epsW / self.batchSize)
-    self.bias = self.bias.mul_add(1, self.biasGrad, self.epsB /self.batchSize)
+    matrix_add(self.filter, self.filterGrad, beta = self.epsW / self.batchSize)
+    matrix_add(self.bias, self.biasGrad, beta = self.epsB / self.batchSize)
 
   def scaleLearningRate(self, lr):
     self.epsW *= lr
@@ -151,15 +145,9 @@ class MaxPoolLayer(Layer):
     cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
 
-    if PFout:
-      printMatrix(output, self.name)
-
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, 0.0, 1.0)
-
-    if PBout:
-      printMatrix(outGrad, self.name)
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, image_shape, pow = 0.75, size = 9, scale = 0.001):
@@ -180,16 +168,10 @@ class ResponseNormLayer(Layer):
     cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scale,
         self.pow)
 
-    if PFout:
-      printMatrix(output, self.name)
-
 
   def bprop(self, grad,input, output, outGrad):
     cudaconv2.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
         self.size, self.scale, self.pow, 0.0, 1.0)
-
-    if PBout:
-      printMatrix(outGrad, self.name)
 
   def dump(self):
     d = Layer.dump(self)
@@ -236,23 +218,18 @@ class FCLayer(Layer):
     return self.outputShape
 
   def fprop(self, input, output ):
-    gpu_copy_to( output.mul_add(0, dot(self.weight, input), 1), output)
+    gpu_copy_to(dot(self.weight, input), output)
     add_vec_to_rows(output, self.bias)
 
-    if PFout:
-      printMatrix(output, self.name)
-
   def bprop(self, grad, input, output, outGrad):
-    gpu_copy_to(outGrad.mul_add(0, dot(transpose(self.weight), grad), 1), outGrad)
-    self.weightGrad = self.weightGrad.mul_add(0, dot(grad, transpose(input)), 1)
+    gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
+    self.weightGrad = dot(grad, transpose(input))
     add_row_sum_to_vec(self.biasGrad, grad, alpha = 0.0)
 
-    if PBout:
-      printMatrix(outGrad, self.name)
 
   def update(self):
-    self.weight = self.weight.mul_add(1, self.weightGrad, self.epsW / self.batchSize)
-    self.bias = self.bias.mul_add(1, self.biasGrad, self.epsB / self.batchSize)
+    matrix_add(self.weight, self.weightGrad, beta = self.epsW/ self.batchSize)
+    matrix_add(self.bias, self.biasGrad, beta = self.epsB /self.batchSize)
 
   def scaleLearningRate(self, l):
     self.epsW *= l
@@ -280,8 +257,6 @@ class SoftmaxLayer(Layer):
     add_col_sum_to_vec(sum, output, alpha = 0)
     div_vec_to_cols(output, sum)
 
-    if PFout:
-      printMatrix(output, self.name)
 
   def logreg_cost(self, label, output):
     maxid = gpuarray.zeros((self.batchSize, 1), dtype = np.float32)
@@ -293,8 +268,6 @@ class SoftmaxLayer(Layer):
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)
 
-    if PBout:
-      printMatrix(outGrad, self.name)
 
   def get_correct(self):
     return  1.0 * self.batchCorrect / self.batchSize
@@ -342,13 +315,8 @@ class NeuronLayer(Layer):
   def fprop(self, input, output):
     self.neuron.activate(input, output)
 
-    if PFout:
-      printMatrix(output, self.name)
-
   def bprop(self, grad, input, output, outGrad):
     self.neuron.computeGrad(grad, output, outGrad)
-    if PBout:
-      printMatrix(outGrad, self.name)
 
   def dump(self):
     d = Layer.dump(self)

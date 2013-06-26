@@ -25,6 +25,7 @@ class FastNet(object):
 
     self.numCase = self.cost = self.correct = 0.0
 
+    self.numConv = 0
     if initModel:
       self.initLayer(initModel)
       return
@@ -38,19 +39,19 @@ class FastNet(object):
       numFilter = ld['numFilter']
       filterSize = ld['filterSize']
       numColor = ld['numColor']
-      padding = ld['paddinng']
+      padding = ld['padding']
       stride = ld['stride']
       initW = ld['initW']
-      intB = ld['iniB']
+      initB = ld['initB']
       name = ld['name']
       epsW = ld['epsW']
       epsB = ld['epsB']
-      imgSize = ls['imgSize']
-      bias  = ld['biases']
-      weight = ld['weight']
+      imgSize = ld['imgSize']
+      bias  = ld['bias']
+      weight = ld['filter']
       name = ld['name']
       filter_shape = (numFilter, numColor, filterSize, filterSize)
-      imge_shape = self.imgShapes[-1]
+      img_shape = self.imgShapes[-1]
       return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB,
           bias, weight)
 
@@ -74,9 +75,9 @@ class FastNet(object):
       initB = ld['initB']
       initW = ld['initW']
 
-      n_out = ld['outputs']
-      bias = ld['biases']
-      weight = ld['weights']
+      n_out = ld['outputSize']
+      bias = ld['bias']
+      weight = ld['weight']
       name = ld['name']
       input_shape = self.inputShapes[-1]
       return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
@@ -212,27 +213,29 @@ class FastNet(object):
       for i in range(len(n_filters)):
         prev = n_filters[i-1] if i > 0 else self.imgShapes[-1][1]
         filter_shape = (n_filters[i], prev, size_filters[i], size_filters[i])
-        conv = ConvLayer('conv' + str(i + 1), filter_shape, self.imgShapes[-1])
+        conv = ConvLayer('conv' + str(self.numConv), filter_shape, self.imgShapes[-1])
         self.append_layer(conv)
         conv.scaleLearningRate(self.learningRate)
 
-        neuron = NeuronLayer('neuron'+str(i+1), self.imgShapes[-1])
+        neuron = NeuronLayer('neuron'+str(self.numConv), self.imgShapes[-1])
         self.append_layer(neuron)
 
-        pool = MaxPool('pool'+str(i + 1), self.imgShapes[-1])
+        pool = MaxPoolLayer('pool'+str(self.numConv), self.imgShapes[-1])
         self.append_layer(pool)
 
-        rnorm = ResponseLayer('rnorm'+str(i+1), self.imgShapes[-1])
+        rnorm = ResponseNormLayer('rnorm'+str(self.numConv), self.imgShapes[-1])
         self.append_layer(rnorm)
 
       for i in range(len(fc_nout)):
         fc = FCLayer('fc'+str(i+1), self.inputShapes[-1], fc_nout[-1])
         self.append_layer(fc)
 
-      self.append_layer(Softmax('softmax', self.inputShapes[-1]))
+      self.append_layer(SoftmaxLayer('softmax', self.inputShapes[-1]))
 
   def append_layer(self, layer):
     self.layers.append(layer)
+    if layer.type == 'conv':
+      self.numConv += 1
 
     outputShape = layer.get_output_shape()
     row = outputShape[1] * outputShape[2] * outputShape[3]
@@ -247,7 +250,7 @@ class FastNet(object):
 
   def del_layer(self):
     name = self.layers[-1]
-    del self.layers[-1], self.inputShpaes[-1], self.imgShapes[-1], self.outputs[-1], self.grads[-1]
+    del self.layers[-1], self.inputShapes[-1], self.imgShapes[-1], self.outputs[-1], self.grads[-1]
     print 'delete layer', name
     print 'the last layer would be', self.layers[-1].name
 
@@ -280,7 +283,7 @@ class FastNet(object):
   def update(self):
     for l in self.layers:
       if l.diableBprop:
-        return
+        continue
       l.update()
 
   def get_cost(self, label, output):
@@ -330,12 +333,11 @@ class FastNet(object):
     output = gpuarray.zeros(outputShape, dtype=np.float32)
 
     if not isinstance(data, GPUArray):
-      assert(isinstance(data, np.ndarray))
-      data = gpuarray.to_gpu(data.astype(np.float32)) #.astype(np.float32))
+      data = gpuarray.to_gpu(data.astype(np.float32))
 
     if not isinstance(label, GPUArray):
-      assert(isinstance(label, np.ndarray))
-      label = gpuarray.to_gpu(label.astype(np.float32))
+      label = gpuarray.to_gpu(label).astype(np.float32)
+      label.shape = (label.size, 1)
 
     self.fprop(data, output)
     cost, correct = self.get_cost(label, output)
@@ -354,5 +356,5 @@ class FastNet(object):
   
   def disable_bprop(self):
     for l in self.layers:
-      layers.disableBprop()
+      l.disableBprop()
 

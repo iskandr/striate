@@ -31,9 +31,7 @@ class Trainer:
     self.n_out = n_out
     self.regex = re.compile('^test%d-(\d+)\.(\d+)$' % self.test_id)
 
-    self.train_dp = DataProvider(self.batch_size, self.data_dir, self.train_range)
-    self.test_dp = DataProvider(self.batch_size, self.data_dir, self.test_range)
-
+    self.init_data_provider()
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
     self.train_outputs = []
     self.test_outputs = []
@@ -46,6 +44,11 @@ class Trainer:
     self.num_train_minibatch = 0
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
+
+  def init_data_provider(self):
+    self.train_dp = ParallelDataProvider(self.batch_size, self.data_dir, self.train_range)
+    self.test_dp = DataProvider(self.batch_size, self.data_dir, self.test_range)
+
 
   def get_next_minibatch(self, i, train = TRAIN):
     if train == TRAIN:
@@ -105,18 +108,17 @@ class Trainer:
 
 
   def train(self):
-    self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()#self.train_dp.wait()
+    self.train_dp.get_next_batch()
+    self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.wait()
     while self.curr_epoch <= self.num_epoch:
       start = time.time()
       self.num_train_minibatch = ceil(self.train_data['data'].shape[1], self.batch_size)
 
       # when loading data, training at the same time
-
+      self.train_dp.get_next_batch()#
 
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
-        label = np.array(label).astype(np.float32)
-        label.shape = (label.size, 1)
         self.net.train_batch(input, label)
 
       cost , correct, numCase = self.net.get_batch_information()
@@ -135,7 +137,7 @@ class Trainer:
         self.save_checkpoint()
         print '------------'
 
-      self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()#self.train_dp.wait()
+      self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.wait()
 
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
@@ -162,54 +164,50 @@ class LayerwisedTrainer(Trainer):
 
     init_n_filter = [self.n_filters[0]]
     init_size_filter = [self.size_filters[0]]
-    
+
 
     self.net.add_parameterized_layers(init_n_filter, init_size_filter, self.fc_nouts)
 
   def train(self):
-    if self.layerwised :
-      print 'Train the first conv-pool-rnorm stack'
-    
     Trainer.train(self)
-    
+
     if self.layerwised:
       for i in range(len(self.n_filters) - 1):
         next_n_filter = [self.n_filters[i +1]]
-        next_size_filter = [self.size_filter[i+1]]
+        next_size_filter = [self.size_filters[i+1]]
         model = load(self.checkpoint_file)
-        self.net = FastNet(self.learning_rate, self.image_shape, model = model)
-        self.del_layer()
-        self.del_layer()
+        self.net = FastNet(self.learning_rate, self.image_shape, 0, initModel = model)
+        self.net.del_layer()
+        self.net.del_layer()
         self.net.disable_bprop()
-        
-        self.add_parameterized_layers(next_n_filter, next_size_filter, self.fc_nouts)
-        
+
+        self.net.add_parameterized_layers(next_n_filter, next_size_filter, self.fc_nouts)
+        self.init_data_provider()
+
         Trainer.train(self)
-    
-   
 
 if __name__ == '__main__':
-  test_id = 1
+  test_id = 4
   data_dir = '/hdfs/cifar/data/cifar-10-python'
   checkpoint_dir = './checkpoint/'
   train_range = range(1, 41)
-  test_range = range(41, 49)
+  test_range = range(41, 42)
 
   test_freq = 5
   save_freq = 10
   batch_size = 128
-  num_epoch = 2
+  num_epoch = 25
 
   image_size = 32
   image_color = 3
-  learning_rate = 0.64
+  learning_rate = 1.0
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
-  trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
-      size_filters, fc_nouts)
+  #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
+  #    size_filters, fc_nouts)
+  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
 
   trainer.train()
-
-  timer.report()
