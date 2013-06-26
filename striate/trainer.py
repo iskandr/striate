@@ -15,7 +15,7 @@ def load(filename):
 class Trainer:
   CHECKPOINT_REGEX = None
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True):
     self.test_id = test_id
     self.data_dir = data_dir
     self.checkpoint_dir = checkpoint_dir
@@ -37,7 +37,7 @@ class Trainer:
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
     self.train_outputs = []
     self.test_outputs = []
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out)
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd = autoInit)
 
     self.num_batch = self.curr_epoch = self.curr_batch = 0
     self.train_data = None
@@ -45,6 +45,7 @@ class Trainer:
 
     self.num_train_minibatch = 0
     self.num_test_minibatch = 0
+    self.checkpoint_file = ''
 
   def get_next_minibatch(self, i, train = TRAIN):
     if train == TRAIN:
@@ -82,6 +83,7 @@ class Trainer:
       os.remove(os.path.join(self.checkpoint_dir, f))
     checkpoint_filename = "test%d-%d.%d" % (self.test_id, self.curr_epoch, self.curr_batch)
     checkpoint_file_path = os.path.join(self.checkpoint_dir, checkpoint_filename)
+    self.checkpoint_file = checkpoint_file_path
     print checkpoint_file_path
     with open(checkpoint_file_path, 'w') as f:
       cPickle.dump(dic, f)
@@ -141,6 +143,51 @@ class Trainer:
 
 
 
+
+class LayerwisedTrainer(Trainer):
+  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
+      size_filters, fc_nouts):
+    Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 0, False)
+    if len(n_filters) == 1:
+      self.layerwised = False
+    else:
+      self.layerwised = True
+
+
+    self.n_filters = n_filters
+    self.size_filters = size_filters
+    self.fc_nouts = fc_nouts
+
+    init_n_filter = [self.n_filters[0]]
+    init_size_filter = [self.size_filters[0]]
+    
+
+    self.net.add_parameterized_layers(init_n_filter, init_size_filter, self.fc_nouts)
+
+  def train(self):
+    if self.layerwised :
+      print 'Train the first conv-pool-rnorm stack'
+    
+    Trainer.train(self)
+    
+    if self.layerwised:
+      for i in range(len(self.n_filters) - 1):
+        next_n_filter = [self.n_filters[i +1]]
+        next_size_filter = [self.size_filter[i+1]]
+        model = load(self.checkpoint_file)
+        self.net = FastNet(self.learning_rate, self.image_shape, model = model)
+        self.del_layer()
+        self.del_layer()
+        self.net.disable_bprop()
+        
+        self.add_parameterized_layers(next_n_filter, next_size_filter, self.fc_nouts)
+        
+        Trainer.train(self)
+    
+   
+
 if __name__ == '__main__':
   test_id = 1
   data_dir = '/hdfs/cifar/data/cifar-10-python'
@@ -156,10 +203,12 @@ if __name__ == '__main__':
   image_size = 32
   image_color = 3
   learning_rate = 0.64
-  n_out = 10
-
-  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out)
+  n_filters = [64, 64]
+  size_filters = [5, 5]
+  fc_nouts = [10]
+  trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
+      size_filters, fc_nouts)
 
   trainer.train()
 

@@ -164,7 +164,7 @@ class FastNet(object):
   def initLayer(self, m):
     layers = m['model_state']['layers']
     for l in layers:
-      layer = self.makeLayerFromCUDACONVNET(l)
+      layer = self.makeLayerFromFASTNET(l)
       if layer:
         layer.scaleLearningRate(self.learningRate)
         self.append_layer(layer)
@@ -210,19 +210,19 @@ class FastNet(object):
       self.autoAddLayer(fc_nout[-1])
     else:
       for i in range(len(n_filters)):
-        prev = n_filters[i-1] if i > 0 else self.imageShape[-1].shape[1]
-        filter_shape = (n_filter[i], prev, size_filters[i], size_filters[i])
-        conv = ConvLayer('conv' + str(i + 1), filter_shape, self.image_shape[-1])
+        prev = n_filters[i-1] if i > 0 else self.imgShapes[-1][1]
+        filter_shape = (n_filters[i], prev, size_filters[i], size_filters[i])
+        conv = ConvLayer('conv' + str(i + 1), filter_shape, self.imgShapes[-1])
         self.append_layer(conv)
         conv.scaleLearningRate(self.learningRate)
 
-        neuron = NeuronLayer('neuron'+str(i+1), self.imageShapes[-1])
+        neuron = NeuronLayer('neuron'+str(i+1), self.imgShapes[-1])
         self.append_layer(neuron)
 
-        pool = MaxPool('pool'+str(i + 1), self.imageShapes[-1])
+        pool = MaxPool('pool'+str(i + 1), self.imgShapes[-1])
         self.append_layer(pool)
 
-        rnorm = ResponseLayer('rnorm'+str(i+1), self.imageShapes[-1])
+        rnorm = ResponseLayer('rnorm'+str(i+1), self.imgShapes[-1])
         self.append_layer(rnorm)
 
       for i in range(len(fc_nout)):
@@ -351,3 +351,8 @@ class FastNet(object):
       layers.append(l.dump() )
 
     return layers
+  
+  def disable_bprop(self):
+    for l in self.layers:
+      layers.disableBprop()
+
