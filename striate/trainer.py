@@ -155,10 +155,10 @@ class AutoStopTrainer(Trainer):
 
 
   def check_continue_trainning(self):
-    return self.scheduler.check_continue_trainning() and Trainer.check_continue_trainning(self)
+    return Trainer.check_continue_trainning(self) and self.scheduler.check_continue_trainning()
 
   def check_save_checkpoint(self):
-    return self.scheduler.check_save_checkpoint() and Trainer.check_save_checkpoint(self)
+    return Trainer.check_save_checkpoint(self) and self.scheduler.check_save_checkpoint()
 
 
 
@@ -208,6 +208,9 @@ if __name__ == '__main__':
   test_id = 4
   data_dir = '/hdfs/cifar/data/cifar-10-python'
   checkpoint_dir = './checkpoint/'
+  description = '''
+  The Trainer is for 
+  '''
   train_range = range(1, 48)
   test_range = range(48, 49)
 

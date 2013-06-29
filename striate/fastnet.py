@@ -36,131 +36,45 @@ class FastNet(object):
 
   def makeLayerFromFASTNET(self, ld):
     if ld['type'] == 'conv':
-      numFilter = ld['numFilter']
-      filterSize = ld['filterSize']
-      numColor = ld['numColor']
-      padding = ld['padding']
-      stride = ld['stride']
-      initW = ld['initW']
-      initB = ld['initB']
-      name = ld['name']
-      epsW = ld['epsW']
-      epsB = ld['epsB']
-      imgSize = ld['imgSize']
-      bias  = ld['bias']
-      weight = ld['filter']
-      name = ld['name']
-      filter_shape = (numFilter, numColor, filterSize, filterSize)
-      img_shape = self.imgShapes[-1]
-      return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB,
-          bias, weight)
+      return ConvLayer.parseFromFASTNET(ld)      
 
     if ld['type'] == 'pool':
-      stride = ld['stride']
-      start = ld['start']
-      poolSize = ld['poolSize']
-      img_shape = self.imgShapes[-1]
-      name = ld['name']
-      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+      return MaxPoolLayer.parseFromFASTNET(ld) 
 
     if ld['type'] == 'neuron':
-      if ld['neuron']['type'] == 'relu':
-        img_shape = self.imgShapes[-1]
-        name = ld['name']
-        return NeuronLayer(name, img_shape, type = 'relue')
+      return NeuronLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'fc':
-      epsB = ld['epsB']
-      epsW = ld['epsW']
-      initB = ld['initB']
-      initW = ld['initW']
-
-      n_out = ld['outputSize']
-      bias = ld['bias']
-      weight = ld['weight']
-      name = ld['name']
-      input_shape = self.inputShapes[-1]
-      return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
-
+      return FCLayer.parseFromFASTNET(ld)
+      
     if ld['type'] == 'softmax':
-      name = ld['name']
-      input_shape = self.inputShapes[-1]
-      return SoftmaxLayer(name, input_shape)
-
+      return SoftmaxLayer.parseFromFASTNET(ld)
+      
     if ld['type'] == 'rnorm':
-      name = ld['name']
-      pow = ld['pow']
-      size = ld['size']
-      scale = ld['scale']
-
-      img_shape = self.imgShapes[-1]
-      return ResponseNormLayer(name, img_shape, pow, size, scale)
-
+      return ResponseNormLayer.parseFromFASTNET(ld)
 
   def makeLayerFromCUDACONVNET(self, ld):
     if ld['type'] == 'conv':
-      numFilter = ld['filters']
-      filterSize = ld['filterSize'][0]
-      numColor = ld['channels'][0]
-      padding = -ld['padding'][0]
-      stride = ld['stride'][0]
-      initW = ld['initW'][0]
-      initB = ld['initB']
-      name = ld['name']
-      epsW = ld['epsW'][0]
-      epsB = ld['epsB']
-
-      imgSize = ld['imgSize']
-
-      bias = ld['biases']
-      weight = ld['weights'][0]
-
-      filter_shape = (numFilter, numColor, filterSize, filterSize)
-      img_shape = self.imgShapes[-1]
-      return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias,
-          weight)
-
+      ld['imgShape'] = self.imgShapes[-1]
+      return ConvLayer.parseFromCUDACONVNET(ld)
+      
     if ld['type'] == 'pool':
-      stride = ld['stride']
-      start = ld['start']
-      poolSize = ld['sizeX']
-      img_shape = self.imgShapes[-1]
-      name = ld['name']
-      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+      return MaxPoolLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'neuron':
-      if ld['neuron']['type'] == 'relu':
-        img_shape = self.imgShapes[-1]
-        name = ld['name']
-        return NeuronLayer(name, img_shape, type = 'relu')
+      ld['imgShape'] = self.imgShapes[-1]
+      return NeuronLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'fc':
-      epsB = ld['epsB']
-      epsW = ld['epsW'][0]
-      initB = ld['initB']
-      initW = ld['initW'][0]
-
-      n_out = ld['outputs']
-      bias = ld['biases']
-      weight = ld['weights'][0].transpose()
-      name = ld['name']
-      input_shape = self.inputShapes[-1]
-      return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
+      ld['inputShape'] = self.inputShapes[-1]
+      return FCLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'softmax':
-      name = ld['name']
-      input_shape = self.inputShapes[-1]
-      return SoftmaxLayer(name, input_shape)
+      ld['inputShape'] = self.inputShapes[-1]
+      return SoftmaxLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'rnorm':
-      name = ld['name']
-      pow = ld['pow']
-      size = ld['size']
-      scale = ld['scale']
-
-      img_shape = self.imgShapes[-1]
-      return ResponseNormLayer(name, img_shape, pow, size, scale)
-
+      return ResponseNormLayer.parseFromCUDACONVNET(ld)
 
   def initLayer(self, m):
     layers = m['model_state']['layers']

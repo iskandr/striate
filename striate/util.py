@@ -454,6 +454,22 @@ _relu_activate_ = CompiledSource('''
   }''', 'relu_activate'
   )
 
+
+_tanh_activate_ = CompiledSource('''
+    __global__
+    void tanh_activate(float* input, float *output, float a, float _n2b, int leading, int rows, int cols) {
+     int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if(i >= cols) return ;
+      if(j >= rows) return ;
+
+      int idx = i + j * leading;
+
+      output[idx] = a * (__fdividef(2.0f, 1.0f + __expf(input[idx]* _n2b)) - 1.0f);
+    }''', 'tanh_activate'
+    )
+
 _relu_compute_grad_ = CompiledSource('''
   __global__
   void relu_compute_grad(float * grad, float * output, float* outGrad, int leading, int rows, int
@@ -465,10 +481,28 @@ _relu_compute_grad_ = CompiledSource('''
     if(j >= rows) return;
 
     int idx = i + j * leading;
-    grad[idx] = grad[idx] * (output[idx] > 0.0f);
-    outGrad[idx] = grad[idx];
+    outGrad[idx] = grad[idx] * (output[idx] > 0.0f);
+    //grad[idx] = grad[idx] * (output[idx] > 0.0f);
   }
   ''', 'relu_compute_grad')
+
+_tanh_compute_grad_ = CompiledSource('''
+  __global__
+  void tanh_compute_grad(float * grad, float * output, float* outGrad, float a, float _n4ab,  int leading, int rows, int
+  cols) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if(i >= cols) return;
+    if(j >= rows) return;
+
+    int idx = i + j * leading;
+    float t = (1.0f - __fdividef(output[idx], a)) / 2.0f;
+    outGrad[idx] = grad[idx] *_n4ab * (t * ( t - 1.0f));
+    //grad[idx] = grad[idx] * (output[idx] > 0.0f);
+  }
+  ''', 'tanh_compute_grad')
+
 
 
 _transpose_ = CompiledSource('''
@@ -777,6 +811,31 @@ def relu_compute_grad(grad, output, outGrad):
   _relu_compute_grad_(grad, output, outGrad, I(leading), I(mh), I(mw), block = block, grid =
       grid)
   timer.end('relu_compute_grad')
+
+def tanh_activate(input, output, a, b):
+  timer.start()
+  mh, mw = input.shape
+
+  block = (32,32,1)
+  grid = (ceil(mw, 32), ceil(mh, 32))
+  leading = input.strides[0]/4
+  _n2b = -2.0 * b
+  _tanh_activate_(input, output, F(a), F(_n2b), I(leading), I(mh), I(mw), block = block , grid = grid)
+  timer.end('tanh_activate')
+
+
+def tanh_compute_grad(grad, output, outGrad, a, b):
+  timer.start()
+  mh, mw = input.shape
+
+  block = (32,32,1)
+  grid = (ceil(mw, 32), ceil(mh, 32))
+  leading = input.strides[0]/4
+  _n4ab = -4.0 * a *b
+  _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block = block , grid = grid)
+  timer.end('tanh_compute_grad')
+
+
 
 def gpu_copy_to(x, y):
   timer.start()
