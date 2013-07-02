@@ -224,11 +224,11 @@ if __name__ == '__main__':
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
-  trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
-      size_filters, fc_nouts)
-  #trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
+  #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
+  #    size_filters, fc_nouts)
+  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   #trainer = AutoStopTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   trainer.train()

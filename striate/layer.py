@@ -38,7 +38,7 @@ class Layer(object):
 
   def change_batch_size(self, batch_size):
     self.batchSize = batch_size
-  
+
   def dump(self):
     d = {}
     attr = [att for att in dir(self) if not att.startswith('__')]
@@ -81,7 +81,7 @@ class ConvLayer(Layer):
 
     self.filterGrad = gpuarray.zeros_like(self.filter)
     self.biasGrad = gpuarray.zeros_like(self.bias)
-  
+
   @staticmethod
   def parseFromFASTNET(ld):
     numFilter = ld['numFilter']
@@ -182,7 +182,7 @@ class MaxPoolLayer(Layer):
     self.batchSize, self.numColor, self.imgSize, _  = image_shape
 
     self.outputSize = ceil(self.imgSize - self.poolSize -self.start, self.stride) + 1
-  
+
   @staticmethod
   def parseFromFASTNET(ld):
     stride = ld['stride']
@@ -191,7 +191,7 @@ class MaxPoolLayer(Layer):
     img_shape = ld['imgShape']
     name = ld['name']
     return MaxPoolLayer(name, img_shape, poolSize, stride, start)
-  
+
   @staticmethod
   def parseFromCUDACONVNET(ld):
     stride = ld['stride']
@@ -233,7 +233,7 @@ class ResponseNormLayer(Layer):
     scale = ld['scale']
     image_shape = ld['imgShape']
     return ResponseNormLayer(name, image_shape, pow, size, scale)
-  
+
   @staticmethod
   def parseFromCUDACONVNET(ld):
     return ResponseNormLayer.parseFromFASTNET(ld)
@@ -266,10 +266,10 @@ class FCLayer(Layer):
     self.epsB = epsB
     self.initW = initW
     self.initB = initB
-    
+
     self.inputShape = input_shape
     self.inputSize, self.batchSize = input_shape
-    
+
     self.outputSize = n_out
 
     self.weightShape = (self.outputSize, self.inputSize)
@@ -287,7 +287,7 @@ class FCLayer(Layer):
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
 
-  
+
   @staticmethod
   def parseFromFASTNET(ld):
     epsB = ld['epsB']
@@ -301,7 +301,7 @@ class FCLayer(Layer):
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
-  
+
   @staticmethod
   def parseFromCUDACONVNET(ld):
     epsB = ld['epsB']
@@ -313,7 +313,7 @@ class FCLayer(Layer):
     bias = ld['biases']
     weight = ld['weights'][0].transpose()
     name = ld['name']
-    input_shape = ld['inputShape'] 
+    input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
 
 
@@ -414,14 +414,21 @@ class Neuron:
     return {'type': self.type}
 
 class ReluNeuron(Neuron):
-  def __init__(self):
+  def __init__(self, e):
     Neuron.__init__(self, 'relu')
+    self.e = e;
 
   def activate(self, input, output):
-    relu_activate(input, output)
+    relu_activate(input, output, self.e)
 
   def computeGrad(self, grad, output, outGrad):
-    relu_compute_grad(grad, output, outGrad)
+    relu_compute_grad(grad, output, outGrad, self.e)
+
+  def dump(self):
+    d = Neuron.dump(self)
+    d['e'] = self.e
+    return d
+
 
 
 class TanhNeuron(Neuron):
@@ -429,12 +436,12 @@ class TanhNeuron(Neuron):
     Neuron.__init__(self, 'tanh')
     self.a, self.b = a, b
 
-  def active(self, input, output):
+  def activate(self, input, output):
     tanh_activate(input, output, self.a , self.b)
 
-  def computeGrad(self, grad, ouput, outGrad):
-    tanh_compute_grad(gra, output, outGrad, a, b)
-  
+  def computeGrad(self, grad, output, outGrad):
+    tanh_compute_grad(grad, output, outGrad, self.a, self.b)
+
   def dump(self):
     d = Neuron.dump(self)
     d['a'] = self.a
@@ -442,11 +449,11 @@ class TanhNeuron(Neuron):
     return d
 
 class NeuronLayer(Layer):
-  def __init__(self, name, image_shape,  type = 'relu', a = 0, b = 0):
+  def __init__(self, name, image_shape,  type = 'relu', a = 1.0, b = 1.0, e = 0.0):
     Layer.__init__(self, name, 'neuron')
     self.imgShape = image_shape
     if type == 'relu':
-      self.neuron = ReluNeuron()
+      self.neuron = ReluNeuron(e)
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
     self.batchSize, self.numColor, self.imgSize, _= image_shape
@@ -456,13 +463,14 @@ class NeuronLayer(Layer):
     if ld['neuron']['type'] == 'relu':
       img_shape = ld['imgShape']
       name = ld['name']
-      return NeuronLayer(name, img_shape, type = 'relu')
+      e = ld['neuron']['e']
+      return NeuronLayer(name, img_shape, type = 'relu', e = e)
     if ld['neuron']['type'] == 'tanh':
       name = ld['name']
       img_shape = ld['imgShape']
       a = ld['neuron']['a']
       b = ld['neuron']['b']
-      return NeuronLayer(name, img_shape, 'tanh', a, b)
+      return NeuronLayer(name, img_shape, 'tanh', a = a, b = b)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 

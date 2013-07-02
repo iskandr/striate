@@ -81,7 +81,6 @@ class FastNet(object):
     for l in layers:
       layer = self.makeLayerFromFASTNET(l)
       if layer:
-        layer.scaleLearningRate(self.learningRate)
         self.append_layer(layer)
 
   def autoAddLayer(self, n_out):
@@ -90,7 +89,7 @@ class FastNet(object):
     conv1.scaleLearningRate(self.learningRate)
     self.append_layer(conv1)
 
-    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1])
+    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1], type='relu', e = 0.01)
     self.append_layer(conv1_relu)
 
     pool1 = MaxPoolLayer('pool1', self.imgShapes[-1], poolSize = 3, stride = 2, start = 0)
@@ -104,7 +103,7 @@ class FastNet(object):
     conv2.scaleLearningRate(self.learningRate)
     self.append_layer(conv2)
 
-    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1])
+    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1], type='relu', e = 0.01)
     self.append_layer(conv2_relu)
 
     rnorm2 = ResponseNormLayer('rnorm2', self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
@@ -131,7 +130,7 @@ class FastNet(object):
         self.append_layer(conv)
         conv.scaleLearningRate(self.learningRate)
 
-        neuron = NeuronLayer('neuron'+str(self.numConv), self.imgShapes[-1])
+        neuron = NeuronLayer('neuron'+str(self.numConv), self.imgShapes[-1], type='tanh')
         self.append_layer(neuron)
 
         pool = MaxPoolLayer('pool'+str(self.numConv), self.imgShapes[-1])
@@ -271,4 +270,10 @@ class FastNet(object):
   def disable_bprop(self):
     for l in self.layers:
       l.disableBprop()
+
+
+
+class AdaptiveFastNet(FastNet):
+  def __init__(self, learningRate, imgShape, numOutput, initModel = None, autoAdd = True):
+    FastNet.__init__(self, learningRate, imgShape, numOutput, initModel, autoAdd)
 

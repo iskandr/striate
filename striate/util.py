@@ -441,7 +441,7 @@ _softmax_bprop_ = CompiledSource(
 
 _relu_activate_ = CompiledSource('''
   __global__
-  void relu_activate(float* input, float* output, int leading, int rows, int cols) {
+  void relu_activate(float* input, float* output, float e,  int leading, int rows, int cols) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
 
@@ -450,7 +450,7 @@ _relu_activate_ = CompiledSource('''
 
     int idx = i + j * leading;
 
-    output[idx] = fmaxf(input[idx], 0.0);
+    output[idx] = fmaxf(input[idx], e);
   }''', 'relu_activate'
   )
 
@@ -472,7 +472,7 @@ _tanh_activate_ = CompiledSource('''
 
 _relu_compute_grad_ = CompiledSource('''
   __global__
-  void relu_compute_grad(float * grad, float * output, float* outGrad, int leading, int rows, int
+  void relu_compute_grad(float * grad, float * output, float* outGrad, float e, int leading, int rows, int
   cols) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     int j = blockIdx.y * blockDim.y + threadIdx.y;
@@ -481,8 +481,8 @@ _relu_compute_grad_ = CompiledSource('''
     if(j >= rows) return;
 
     int idx = i + j * leading;
-    outGrad[idx] = grad[idx] * (output[idx] > 0.0f);
-    //grad[idx] = grad[idx] * (output[idx] > 0.0f);
+    outGrad[idx] = grad[idx] * (output[idx] > e);
+    //grad[idx] = grad[idx] * (output[idx] > e);
   }
   ''', 'relu_compute_grad')
 
@@ -790,25 +790,25 @@ def softmax_bprop(mat, label, grad):
   _softmax_bprop_(mat, label, grad, I(mat.strides[0]/4), I(mh), I(mw), block = block, grid = grid)
   timer.end('softmax_bprop')
 
-def relu_activate(input, output):
+def relu_activate(input, output, e):
   timer.start()
   mh, mw = input.shape
 
   block = (32,32,1)
   grid = (ceil(mw, 32), ceil(mh, 32))
   leading = input.strides[0]/4
-  _relu_activate_(input, output, I(leading), I(mh), I(mw), block = block , grid = grid)
+  _relu_activate_(input, output, F(e), I(leading), I(mh), I(mw), block = block , grid = grid)
   timer.end('relu_activate')
 
 
-def relu_compute_grad(grad, output, outGrad):
+def relu_compute_grad(grad, output, outGrad, e):
   timer.start()
   mh, mw = grad.shape
 
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
   leading = grad.strides[0] / 4
-  _relu_compute_grad_(grad, output, outGrad, I(leading), I(mh), I(mw), block = block, grid =
+  _relu_compute_grad_(grad, output, outGrad, F(e), I(leading), I(mh), I(mw), block = block, grid =
       grid)
   timer.end('relu_compute_grad')
 
@@ -826,11 +826,11 @@ def tanh_activate(input, output, a, b):
 
 def tanh_compute_grad(grad, output, outGrad, a, b):
   timer.start()
-  mh, mw = input.shape
+  mh, mw = output.shape
 
   block = (32,32,1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = input.strides[0]/4
+  leading = output.strides[0]/4
   _n4ab = -4.0 * a *b
   _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block = block , grid = grid)
   timer.end('tanh_compute_grad')
