@@ -195,7 +195,7 @@ class FastNet(object):
 
   def update(self):
     for l in self.layers:
-      if l.diableBprop:
+      if l.diableBprop or not isinstance(l, WeightedLayer):
         continue
       l.update()
 
@@ -215,9 +215,8 @@ class FastNet(object):
     outputLayer = self.layers[-1]
     return outputLayer.get_correct()
 
-  def train_batch(self, data, label, train = TRAIN):
+  def prepare_for_train(self, data, label):
     input = data
-    self.numCase += input.shape[1]
     ########
     # The last minibatch of data_batch file may not be 1024
     ########
@@ -242,22 +241,29 @@ class FastNet(object):
         self.outputs.append(gpuarray.zeros((row, col),dtype=np.float32))
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
-    outputShape = self.inputShapes[-1]
-    output = gpuarray.zeros(outputShape, dtype=np.float32)
-
     if not isinstance(data, GPUArray):
-      data = gpuarray.to_gpu(data.astype(np.float32))
+      self.data = gpuarray.to_gpu(data.astype(np.float32))
+    else:
+      self.data = data
 
     if not isinstance(label, GPUArray):
-      label = gpuarray.to_gpu(label).astype(np.float32)
-      label.shape = (label.size, 1)
+      self.label = gpuarray.to_gpu(label).astype(np.float32)
+    else:
+      self.label = label
+    self.label.shape = (label.size, 1)
+    self.numCase += input.shape[1]
+    outputShape = self.inputShapes[-1]
+    self.output = gpuarray.zeros(outputShape, dtype=np.float32)
 
-    self.fprop(data, output)
-    cost, correct = self.get_cost(label, output)
+  def train_batch(self, data, label, train = TRAIN):
+
+    self.prepare_for_train(data, label)
+    self.fprop(self.data, self.output)
+    cost, correct = self.get_cost(self.label, self.output)
     self.cost += cost
     self.correct += correct
     if train == TRAIN:
-      self.bprop(data, label, output)
+      self.bprop(self.data, self.label, self.output)
       self.update()
 
   def get_dumped_layers(self):

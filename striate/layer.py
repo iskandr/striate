@@ -24,12 +24,6 @@ class Layer(object):
   def bprop(self, grad, input, output, outGrad):
     assert False, "No implementation for bprop"
 
-  def update(self):
-    pass
-
-  def scaleLearningRate(self, l):
-    pass
-
   def disableBprop(self):
     self.diableBprop = True
 
@@ -48,10 +42,41 @@ class Layer(object):
     return d
 
 
-class ConvLayer(Layer):
+class WeightedLayer(Layer):
+  def __init__(self, name, type, epsW, epsB, initW, initB, weight, bias, weightShape, biasShape):
+    Layer.__init__(self, name, type)
+
+    self.epsW = epsW
+    self.epsB = epsB
+    self.initW = initW
+    self.initB = initB
+
+    if weight is None:
+      self.weight = gpuarray.to_gpu(np.random.randn(*weightShape) *
+          self.initW).astype(np.float32)
+    else:
+      self.weight = gpuarray.to_gpu(weight).astype(np.float32)
+
+    if bias is None:
+      self.bias = gpuarray.to_gpu(np.random.randn(*biasShape) *
+          self.initB).astype(np.float32)
+    else:
+      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
+    self.weightGrad = gpuarray.zeros_like(self.weight)
+    self.biasGrad = gpuarray.zeros_like(self.bias)
+  
+
+  def update(self):
+    matrix_add(self.weight, self.weightGrad, beta = self.epsW/ self.batchSize)
+    matrix_add(self.bias, self.biasGrad, beta = self.epsB /self.batchSize)
+
+  def scaleLearningRate(self, l):
+    self.epsW *= l
+    self.epsB *= l
+
+class ConvLayer(WeightedLayer):
   def __init__(self , name, filter_shape, image_shape,  padding = 2, stride = 1, initW = 0.01, initB =
       0.0, epsW = 0.001, epsB = 0.002, bias = None, weight = None):
-    Layer.__init__(self, name, 'conv')
 
     self.filterSize = filter_shape[2]
     self.numFilter = filter_shape[0]
@@ -60,27 +85,14 @@ class ConvLayer(Layer):
     self.batchSize, self.numColor, self.imgSize, _ = image_shape
     self.padding = padding
     self.stride = stride
-    self.initW = initW
-    self.initB = initB
-    self.epsW = epsW
-    self.epsB = epsB
 
     self.outputSize = 1 + int(((2 * self.padding + self.imgSize - self.filterSize) / float(self.stride)))
     self.modules = self.outputSize ** 2
 
-    if weight is None:
-      self.filter = gpuarray.to_gpu(np.random.randn(self.filterSize * self.filterSize *
-        self.numColor, self.numFilter) * self.initW).astype(np.float32)
-    else:
-      self.filter = gpuarray.to_gpu(weight).astype(np.float32)
-
-    if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(self.numFilter, 1) * initB).astype(np.float32)
-    else:
-      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
-
-    self.filterGrad = gpuarray.zeros_like(self.filter)
-    self.biasGrad = gpuarray.zeros_like(self.bias)
+    self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
+    self.biasShape = (self.numFilter, 1)
+    WeightedLayer.__init__(self, name, type, epsW, epsB, initW, initB, weight, bias,
+        self.weightShape, self.biasShape)
 
   @staticmethod
   def parseFromFASTNET(ld):
@@ -96,7 +108,7 @@ class ConvLayer(Layer):
     epsB = ld['epsB']
     imgSize = ld['imgSize']
     bias  = ld['bias']
-    weight = ld['filter']
+    weight = ld['weight']
     name = ld['name']
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
@@ -127,9 +139,9 @@ class ConvLayer(Layer):
         weight)
 
   def dump(self):
-    d = Layer.dump(self)
-    del d['filterGrad'], d['biasGrad'] , d['tmp']
-    d['filter'] = self.filter.get()
+    d = WeightedLayer.dump(self)
+    del d['weightGrad'], d['biasGrad'] , d['tmp']
+    d['weight'] = self.weight.get()
     d['bias'] = self.bias.get()
     return d
 
@@ -143,7 +155,7 @@ class ConvLayer(Layer):
 
 
   def fprop(self, input, output):
-    cudaconv2.convFilterActs(input, self.filter, output, self.imgSize, self.outputSize,
+    cudaconv2.convFilterActs(input, self.weight, output, self.imgSize, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
 
     self.tmp = gpuarray.empty((self.numFilter, self.get_single_img_size() * self.batchSize/self.numFilter), dtype=np.float32)
@@ -152,24 +164,17 @@ class ConvLayer(Layer):
     gpu_copy_to(self.tmp, output)
 
   def bprop(self, grad, input, output, outGrad):
-    cudaconv2.convImgActs(grad, self.filter, outGrad, self.imgSize, self.imgSize,
+    cudaconv2.convImgActs(grad, self.weight, outGrad, self.imgSize, self.imgSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1, 0.0, 1.0)
     #bprop weight
-    self.filterGrad.fill(0)
-    cudaconv2.convWeightActs(input, grad, self.filterGrad, self.imgSize, self.outputSize,
+    self.weightGrad.fill(0)
+    cudaconv2.convWeightActs(input, grad, self.weightGrad, self.imgSize, self.outputSize,
         self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor, 1, 0, 1, 1)
     #bprop bias
     self.biasGrad.fill(0)
     gpu_copy_to(grad,self.tmp)
     add_row_sum_to_vec(self.biasGrad, self.tmp)
 
-  def update(self):
-    matrix_add(self.filter, self.filterGrad, beta = self.epsW / self.batchSize)
-    matrix_add(self.bias, self.biasGrad, beta = self.epsB / self.batchSize)
-
-  def scaleLearningRate(self, lr):
-    self.epsW *= lr
-    self.epsB *= lr
 
 class MaxPoolLayer(Layer):
   def __init__(self,  name, image_shape,  poolSize = 2, stride = 2, start = 0):
@@ -258,35 +263,19 @@ class ResponseNormLayer(Layer):
     del d['denom']
     return d
 
-class FCLayer(Layer):
+class FCLayer(WeightedLayer):
   def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW = 0.01, initB = 0.0, weight =
       None, bias = None):
-    Layer.__init__(self, name, 'fc')
-    self.epsW = epsW
-    self.epsB = epsB
-    self.initW = initW
-    self.initB = initB
-
     self.inputShape = input_shape
     self.inputSize, self.batchSize = input_shape
 
     self.outputSize = n_out
 
     self.weightShape = (self.outputSize, self.inputSize)
-    if weight is None:
-      self.weight = gpuarray.to_gpu(np.random.randn(*self.weightShape) *
-          self.initW).astype(np.float32)
-    else:
-      self.weight = gpuarray.to_gpu(weight).astype(np.float32)
-
-    if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(self.outputSize, 1) *
-          self.initB).astype(np.float32)
-    else:
-      self.bias = gpuarray.to_gpu(bias).astype(np.float32)
-    self.weightGrad = gpuarray.zeros_like(self.weight)
-    self.biasGrad = gpuarray.zeros_like(self.bias)
-
+    self.biasShape = (self.outputSize, 1)
+    WeightedLayer.__init__(self, name, type, epsW, epsB, initW, initB, weight, bias, self.weightShape,
+        self.biasShape)
+    
 
   @staticmethod
   def parseFromFASTNET(ld):
@@ -318,7 +307,7 @@ class FCLayer(Layer):
 
 
   def dump(self):
-    d = Layer.dump(self)
+    d = WeightedLayer.dump(self)
     del d['weightGrad'], d['biasGrad']
     d['weight'] = self.weight.get()
     d['bias'] = self.bias.get()
@@ -336,15 +325,6 @@ class FCLayer(Layer):
     gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
     self.weightGrad = dot(grad, transpose(input))
     add_row_sum_to_vec(self.biasGrad, grad, alpha = 0.0)
-
-
-  def update(self):
-    matrix_add(self.weight, self.weightGrad, beta = self.epsW/ self.batchSize)
-    matrix_add(self.bias, self.biasGrad, beta = self.epsB /self.batchSize)
-
-  def scaleLearningRate(self, l):
-    self.epsW *= l
-    self.epsB *= l
 
 
 class SoftmaxLayer(Layer):
