@@ -5,12 +5,14 @@ from util import timer
 import time
 import re
 from scheduler import *
+import sys
 
 
 class Trainer:
   CHECKPOINT_REGEX = None
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
+      autoInit=True, adjust_freq = 1, factor = 1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.checkpoint_dir = checkpoint_dir
@@ -24,6 +26,8 @@ class Trainer:
     self.image_color = image_color
     self.learning_rate = learning_rate
     self.n_out = n_out
+    self.factor = factor
+    self.adjust_freq = adjust_freq
     self.regex = re.compile('^test%d-(\d+)\.(\d+)$' % self.test_id)
 
     self.init_data_provider()
@@ -110,12 +114,14 @@ class Trainer:
   def check_save_checkpoint(self):
     return self.num_batch % self.save_freq == 0
 
+  def check_adjust_lr(self):
+    return self.num_batch % self.adjust_freq == 0
+
   def train(self):
     self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()#self.train_dp.wait()
     while self.check_continue_trainning():
       start = time.time()
       self.num_train_minibatch = ceil(self.train_data['data'].shape[1], self.batch_size)
-
 
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
@@ -131,6 +137,11 @@ class Trainer:
         print '---- test ----'
         self.get_test_error()
         print '------------'
+
+      if self.factor != 1.0 and self.check_adjust_lr():
+        print '---- adjust learning rate ----'
+        self.net.adjust_learning_rate(self.factor)
+        print '--------'
 
       if self.check_save_checkpoint():
         print '---- save checkpoint ----'
@@ -204,13 +215,41 @@ class LayerwisedTrainer(AutoStopTrainer):
         AutoStopTrainer.train(self)
 
 
+class AdaptiveLearningRateTrainer(Trainer):
+  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out):
+    Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
+        = 10, factor = 0.9, autoInit = False)
+    _, _, self.train_data = self.train_dp.get_next_batch()
+    _,_, self.test_dasta = self.test_dp.get_next_batch()
+    train_data = self.get_next_minibatch(0)
+    test_data = self.get_next_minibatch(0)
+    self.net = AdaptiveFastNet(self.learning_rate, self.image_shape, self.n_out, train_data,
+        test_data, autoAdd = True)
+
+
+
 if __name__ == '__main__':
-  test_id = 4
+  test_des_file = './testdes'
+  test_id = 5
+  description = 'test with 0.01 relu and adaptive learning rate, factor is [0.9, 0.8, 0.7]'
+
+  lines = [line for line in open(test_des_file)]
+  print lines
+  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
+
+  if test_id in  test_des.keys():
+    print test_id, 'is already in test des file and the purpose is', test_des[test_id]
+    sys.exit(1)
+  else:
+    print 'test id is', test_id, 'for', description
+    line= '%d %s\n' % (test_id, description)
+    with open(test_des_file, 'a') as f:
+      f.write(line)
+
   data_dir = '/hdfs/cifar/data/cifar-10-python'
   checkpoint_dir = './checkpoint/'
-  description = '''
-  The Trainer is for 
-  '''
   train_range = range(1, 48)
   test_range = range(48, 49)
 
@@ -227,8 +266,10 @@ if __name__ == '__main__':
   #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
   #    size_filters, fc_nouts)
-  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
+  #trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   #trainer = AutoStopTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
+  trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   trainer.train()

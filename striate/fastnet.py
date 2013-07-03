@@ -36,20 +36,20 @@ class FastNet(object):
 
   def makeLayerFromFASTNET(self, ld):
     if ld['type'] == 'conv':
-      return ConvLayer.parseFromFASTNET(ld)      
+      return ConvLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'pool':
-      return MaxPoolLayer.parseFromFASTNET(ld) 
+      return MaxPoolLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'neuron':
       return NeuronLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'fc':
       return FCLayer.parseFromFASTNET(ld)
-      
+
     if ld['type'] == 'softmax':
       return SoftmaxLayer.parseFromFASTNET(ld)
-      
+
     if ld['type'] == 'rnorm':
       return ResponseNormLayer.parseFromFASTNET(ld)
 
@@ -57,7 +57,7 @@ class FastNet(object):
     if ld['type'] == 'conv':
       ld['imgShape'] = self.imgShapes[-1]
       return ConvLayer.parseFromCUDACONVNET(ld)
-      
+
     if ld['type'] == 'pool':
       return MaxPoolLayer.parseFromCUDACONVNET(ld)
 
@@ -174,7 +174,7 @@ class FastNet(object):
       l.fprop(input, self.outputs[i])
       input = self.outputs[i]
 
-    probs.shape = self.outputs[-1].shape
+    #probs.shape = self.outputs[-1].shape
     gpu_copy_to(self.outputs[-1], probs)
 
   def bprop(self, data, label, prob):
@@ -198,6 +198,11 @@ class FastNet(object):
       if l.diableBprop or not isinstance(l, WeightedLayer):
         continue
       l.update()
+
+  def adjust_learning_rate(self, factor = 1.0):
+    for layer in self.layers:
+      if isinstance(layer, WeightedLayer):
+        l.scaleLearningRate(factor)
 
   def get_cost(self, label, output):
     outputLayer = self.layers[-1]
@@ -272,7 +277,7 @@ class FastNet(object):
       layers.append(l.dump() )
 
     return layers
-  
+
   def disable_bprop(self):
     for l in self.layers:
       l.disableBprop()
@@ -280,6 +285,86 @@ class FastNet(object):
 
 
 class AdaptiveFastNet(FastNet):
-  def __init__(self, learningRate, imgShape, numOutput, initModel = None, autoAdd = True):
+  def __init__(self, learningRate, imgShape, numOutput, train, test, initModel = None, autoAdd = True):
     FastNet.__init__(self, learningRate, imgShape, numOutput, initModel, autoAdd)
+    self.train_data, self.train_label = train
+    self.test_data, self.test_label = test
 
+  def adjust_learning_rate(self, factor):
+    factors = [1.05, 0.95, 0.9, 0.85]
+    train_data = self.train_data
+    test_data = self.test_data
+    train_label = self.train_label
+    test_label = self.test_label
+
+    weights = []
+    biases = []
+    epsW = []
+    epsB = []
+
+    print 'store the weight, bias and learning rate'
+    for layer in self.layers:
+      if isinstance(layer, WeightedLayer):
+        weight = gpuarray.empty_like(layer.weight)
+        gpu_copy_to(layer.weight, weight)
+        weights.append(weight)
+        epsW.append(layer.epsW)
+
+        bias = gpuarray.empty_like(layer.bias)
+        gpu_copy_to(layer.bias, bias)
+        biases.append(bias)
+        epsB.append(layer.epsB)
+
+    print 'find the best learning rate'
+    print 'the factor list is ', factors
+
+    self.prepare_for_train(train_data, train_label)
+    self.fprop(self.data, self.output)
+    self.bprop(self.data, self.label, self.output)
+
+    self.get_batch_information()
+    self.update()
+
+    self.train_batch(test_data, test_label, TEST)
+    cost, correct, numCase = self.get_batch_information()
+    best = (correct , 1.0)
+    print 'The normal update produce the correct', correct, 'number of case is', numCase
+
+    for factor in factors:
+      print 'Try the factor', factor
+      i = 0
+      for layer in self.layers:
+        if isinstance(layer, WeightedLayer):
+          gpu_copy_to(weights[i], layer.weight)
+          gpu_copy_to(biases[i], layer.bias)
+          layer.epsW = epsW[i] * factor
+          layer.epsB = epsB[i] * factor
+          i += 1
+
+      self.update()
+      '''
+      for layer in self.layers:
+        if isinstance(layer, WeightedLayer):
+          print 'epsW', layer.epsW, 'epsB', layer.epsB
+          printMatrix(layer.weight, layer.name + 'weight')
+          printMatrix(layer.bias, layer.name + 'bias')
+      '''
+      self.train_batch(test_data, test_label, TEST)
+      cost, correct, numCase = self.get_batch_information()
+      print 'Applying factor', factor, ', The correct is', correct, 'number of case is', numCase
+      if correct > best[0]:
+        best = (correct, factor)
+
+    factor = best[1]
+    i = 0
+    for layer in self.layers:
+      if isinstance(layer, WeightedLayer):
+        gpu_copy_to(weights[i], layer.weight)
+        gpu_copy_to(biases[i], layer.bias)
+        layer.epsW = epsW[i] * factor
+        layer.epsB = epsB[i] * factor
+        print 'Layer', layer.name
+        print 'epsW is', layer.epsW, 'epsB is', layer.epsB
+        i += 1
+
+    self.update()
