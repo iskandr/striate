@@ -89,7 +89,7 @@ class FastNet(object):
     conv1.scaleLearningRate(self.learningRate)
     self.append_layer(conv1)
 
-    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1], type='relu', e = 0.01)
+    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1], type='relu', e = 0.0)
     self.append_layer(conv1_relu)
 
     pool1 = MaxPoolLayer('pool1', self.imgShapes[-1], poolSize = 3, stride = 2, start = 0)
@@ -103,7 +103,7 @@ class FastNet(object):
     conv2.scaleLearningRate(self.learningRate)
     self.append_layer(conv2)
 
-    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1], type='relu', e = 0.01)
+    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1], type='relu', e = 0.0)
     self.append_layer(conv2_relu)
 
     rnorm2 = ResponseNormLayer('rnorm2', self.imgShapes[-1], pow = 0.75, scale = 0.001, size = 9)
@@ -247,7 +247,7 @@ class FastNet(object):
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
     if not isinstance(data, GPUArray):
-      self.data = gpuarray.to_gpu(data.astype(np.float32))
+      self.data = gpuarray.to_gpu(data).astype(np.float32)
     else:
       self.data = data
 
@@ -291,7 +291,7 @@ class AdaptiveFastNet(FastNet):
     self.test_data, self.test_label = test
 
   def adjust_learning_rate(self, factor):
-    factors = [1.05, 0.95, 0.9, 0.85]
+    factors = factor
     train_data = self.train_data
     test_data = self.test_data
     train_label = self.train_label

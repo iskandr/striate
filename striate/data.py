@@ -56,9 +56,8 @@ class DataProvider(object):
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
     self.data = load(filename)
-    self.data['data'] = np.require((self.data['data']-self.batch_meta['data_mean']), dtype = np.single,
-        requirements = 'C')
-    self.data['labels'] = np.require(self.data['labels'], dtype = np.single, requirements = 'C')
+    self.data['data'] = self.data['data']-self.batch_meta['data_mean']
+    self.data['labels'] = np.array(self.data['labels'])
     return  self.curr_epoch, self.curr_batch, self.data
 
 
