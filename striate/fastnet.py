@@ -22,6 +22,7 @@ class FastNet(object):
     self.layers = []
     self.outputs = []
     self.grads = []
+    self.output = None
 
     self.numCase = self.cost = self.correct = 0.0
 
@@ -221,6 +222,7 @@ class FastNet(object):
     return outputLayer.get_correct()
 
   def prepare_for_train(self, data, label):
+    timer.start()
     input = data
     ########
     # The last minibatch of data_batch file may not be 1024
@@ -246,19 +248,29 @@ class FastNet(object):
         self.outputs.append(gpuarray.zeros((row, col),dtype=np.float32))
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
+    timer.end('prepare transform')
+
     if not isinstance(data, GPUArray):
       self.data = gpuarray.to_gpu(data).astype(np.float32)
     else:
+      timer.start()
       self.data = data
+      timer.end('assignment')
 
     if not isinstance(label, GPUArray):
       self.label = gpuarray.to_gpu(label).astype(np.float32)
     else:
       self.label = label
+
+    timer.end('prepare assignment')
+
     self.label.shape = (label.size, 1)
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
-    self.output = gpuarray.zeros(outputShape, dtype=np.float32)
+    if self.output is None or self.output.shape != outputShape:
+      self.output = gpuarray.zeros(outputShape, dtype=np.float32)
+
+    timer.end('prepare end')
 
   def train_batch(self, data, label, train = TRAIN):
 
@@ -328,6 +340,7 @@ class AdaptiveFastNet(FastNet):
     self.train_batch(test_data, test_label, TEST)
     cost, correct, numCase = self.get_batch_information()
     best = (correct , 1.0)
+    origin = (correct, 1.0)
     print 'The normal update produce the correct', correct, 'number of case is', numCase
 
     for factor in factors:
@@ -355,6 +368,8 @@ class AdaptiveFastNet(FastNet):
       if correct > best[0]:
         best = (correct, factor)
 
+    if best[0] / origin[0] < 1.025:
+      best = origin
     factor = best[1]
     i = 0
     for layer in self.layers:

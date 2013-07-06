@@ -10,12 +10,18 @@
   long rows, cols;
   PyObject* data = PyObject_GetAttrString($input, "gpudata");
   Py_DECREF(shape);
+  PyObject* strides = PyObject_GetAttrString($input, "strides");
+  Py_DECREF(strides);
+
+  long stride, itemsize;
 
   float* gpudata = (float*)PyInt_AsLong(data);
   Py_DECREF(data);
   
   PyArg_ParseTuple(shape, "ll", &rows, &cols);
-  $1 = new NVMatrix(gpudata, rows, cols, cols);
+  PyArg_ParseTuple(strides, "ll", &stride, &itemsize);
+  stride = stride / itemsize;
+  $1 = new NVMatrix(gpudata, rows, cols, stride);
 }
 
 %typemap(typecheck,precedence=SWIG_TYPECHECK_INTEGER) NVMatrix& {

@@ -38,7 +38,7 @@ class Timer:
 
   def report(self):
     dic = self.func_time
-    for key in dic:
+    for key in sorted(dic):
       print key, ':', dic[key]
 
 
@@ -538,6 +538,23 @@ _matrix_add_ = CompiledSource('''
   )
 
 
+_gpu_partial_copy_to_ = CompiledSource('''
+    __global__
+    void gpu_partial_copy_to(float* src, float* dest, int row_from, int row_to, int col_from, int
+    col_to, int sleading, int dleading) {
+      int i = blockIdx.x * blockDim.y + threadIdx.x;
+      int j = blockIdx.x * blockDim.y + threadIdx.y;
+
+      if( i >= col_to - col_from) return;
+      if( j >= row_to - row_from) return;
+
+      int sidx = i+col_from  + (j+ row_from) * sleading;
+      int didx = i + j* dleading;
+
+      dest[didx] = src[sidx];
+    }''', 'gpu_partial_copy_to')
+
+
 def row_max_reduce(x, mat):
   '''
   Return the max of each row to a vec, ONLY work on small matrix
@@ -841,6 +858,21 @@ def gpu_copy_to(x, y):
   timer.start()
   pycuda.driver.memcpy_dtod(y.gpudata, x.gpudata, x.nbytes)
   timer.end("gpu_copy_to")
+
+def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
+  timer.start()
+  mh, mw = x.shape
+  row_to = min(row_to, mh)
+  col_to = min(col_to, mw)
+  r, c = row_to - row_from, col_to - col_from
+
+  assert (r, c) == y.shape
+
+  block = (32, 32, 1)
+  grid = (ceil(c, 32), ceil(r, 32))
+  sleading, dleading = x.strides[0]/4, y.strides[0]/4
+  _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block = block, grid = grid)
+  timer.end('gpu_partial_copy_to')
 
 def dot(x,y):
   timer.start()
