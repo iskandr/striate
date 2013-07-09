@@ -294,6 +294,9 @@ class FastNet(object):
     for l in self.layers:
       l.disableBprop()
 
+  def get_report(self):
+    pass
+
 
 
 class AdaptiveFastNet(FastNet):
@@ -301,6 +304,7 @@ class AdaptiveFastNet(FastNet):
     FastNet.__init__(self, learningRate, imgShape, numOutput, initModel, autoAdd)
     self.train_data, self.train_label = train
     self.test_data, self.test_label = test
+    self.adjust_info = [(self.learningRate, 0, 0)]
 
   def adjust_learning_rate(self, factor):
     factors = factor
@@ -368,6 +372,7 @@ class AdaptiveFastNet(FastNet):
       if correct > best[0]:
         best = (correct, factor)
 
+    self.adjust_info.append((best[1], best[0], origin[0]))
     if best[0] / origin[0] < 1.025:
       best = origin
     factor = best[1]
@@ -383,3 +388,6 @@ class AdaptiveFastNet(FastNet):
         i += 1
 
     self.update()
+
+  def get_report(self):
+    return self.adjust_info

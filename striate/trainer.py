@@ -61,11 +61,11 @@ class Trainer:
       data = self.test_data
 
 
-    if not isinstance(data['data'], GPUArray):
-      data['data'] = gpuarray.to_gpu(data['data']).astype(np.float32)
-
-    if not isinstance(data['labels'], GPUArray):
-      data['labels'] = gpuarray.to_gpu(data['labels']).astype(np.float32)
+#    if not isinstance(data['data'], GPUArray):
+#      data['data'] = gpuarray.to_gpu(data['data']).astype(np.float32)
+#
+#    if not isinstance(data['labels'], GPUArray):
+#      data['labels'] = gpuarray.to_gpu(data['labels']).astype(np.float32)
 
     batch_data = data['data']
     batch_label = data['labels']
@@ -75,15 +75,14 @@ class Trainer:
     mh, mw = batch_data.shape
 
     if i == num -1:
-      #input = gpuarray.to_gpu(n.require((batch_data[:, i * batch_size: (i +1)* batch_size]), dtype= np.float32, requirements = 'C'))
-      input = gpuarray.empty((mh, mw - i*batch_size), dtype = np.float32)
-      gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
+      input = gpuarray.to_gpu(n.require((batch_data[:, i * batch_size: (i +1)* batch_size]), dtype= np.float32, requirements = 'C'))
+      #input = gpuarray.empty((mh, mw - i*batch_size), dtype = np.float32)
+      #gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
       label = batch_label[i* batch_size : mw]
     else:
-      input = gpuarray.empty((mh, batch_size), dtype = np.float32)
-      gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
-      print input.get()[0,0]
-      #input = gpuarray.to_gpu(n.require((batch_data[:, i * batch_size: (i +1)* batch_size]), dtype= np.float32, requirements = 'C'))
+      #input = gpuarray.empty((mh, batch_size), dtype = np.float32)
+      #gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
+      input = gpuarray.to_gpu(n.require((batch_data[:, i * batch_size: (i +1)* batch_size]), dtype= np.float32, requirements = 'C'))
       #a = batch_data[:, i * batch_size:(i+1)* batch_size]
       #input = cuda.mem_alloc(a.nbytes)
       #cuda.memcpy_htod(input, a)
@@ -151,7 +150,7 @@ class Trainer:
 
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1-correct]}, numCase, time.time() - start)]
-      print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1-correct,cost, t )# time.time() - start)
+      print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1-correct,cost, time.time() - start)
 
       self.num_batch += 1
       if self.check_test_data():
@@ -174,6 +173,13 @@ class Trainer:
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
       self.save_checkpoint()
+
+    self.report()
+
+  def report(self):
+    print self.net.get_report() 
+    timer.report()
+
 
 
 class AutoStopTrainer(Trainer):
@@ -221,6 +227,14 @@ class AdaptiveLearningRateTrainer(Trainer):
     self.net = AdaptiveFastNet(self.learning_rate, self.image_shape, self.n_out, train_data,
         test_data, autoAdd = True)
 
+  def report(self):
+    lis = self.net.get_report()
+    print 'Iteration:', self.adjust_freq
+    print 'learningRare'
+    for l in lis:
+      print l[0]
+    
+
 
 
 class LayerwisedTrainer(AutoStopTrainer):
@@ -267,21 +281,21 @@ class LayerwisedTrainer(AutoStopTrainer):
 
 if __name__ == '__main__':
   test_des_file = './testdes'
-  factor = [1.05, 0.95, 0.90, 0.85, 0.80]
-  test_id = 17
-  description = 'run adaptive learning rate trainer when increment is larger than 2.5%, with 1.28 learning rate scale and 128 batch size, 70 epochs, factor ' + str(factor)
+  factor = [1.5, 1.2, 0.8, 0.66]
+  test_id = 20
+  description = 'compare to 19, the initial learning rate is 2'
 
-#  lines = [line for line in open(test_des_file)]
-#  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
-#
-#  if test_id in  test_des.keys():
-#    print test_id, 'is already in test des file and the purpose is', test_des[test_id]
-#    sys.exit(1)
-#  else:
-#    print 'test id is', test_id, 'for', description
-#    line= '%d %s\n' % (test_id, description)
-#    with open(test_des_file, 'a') as f:
-#      f.write(line)
+  lines = [line for line in open(test_des_file)]
+  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
+
+  if test_id in  test_des.keys():
+    print test_id, 'is already in test des file and the purpose is', test_des[test_id]
+    sys.exit(1)
+  else:
+    print 'test id is', test_id, 'for', description
+    line= '%d %s\n' % (test_id, description)
+    with open(test_des_file, 'a') as f:
+      f.write(line)
 
   data_dir = '/hdfs/cifar/data/cifar-10-python'
   checkpoint_dir = './checkpoint/'
@@ -289,8 +303,9 @@ if __name__ == '__main__':
   test_range = range(41, 49)
 
   save_freq = test_freq = 10
+  adjust_freq = 40
   batch_size = 128
-  num_epoch = 1
+  num_epoch = 30
 
   image_size = 32
   image_color = 3
@@ -298,14 +313,13 @@ if __name__ == '__main__':
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
-  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq,
-       batch_size, num_epoch, image_size, image_color, learning_rate, 10)
+  #trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq,
+  #     batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
   #    size_filters, fc_nouts)
   #trainer = AutoStopTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
-  #trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, 40, factor)
+  trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, adjust_freq, factor)
   trainer.train()
-  timer.report()
