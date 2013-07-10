@@ -386,8 +386,7 @@ class AdaptiveFastNet(FastNet):
         print 'Layer', layer.name
         print 'epsW is', layer.epsW, 'epsB is', layer.epsB
         i += 1
-
-    self.update()
+    #self.update()
 
   def get_report(self):
     return self.adjust_info

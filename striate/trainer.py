@@ -206,18 +206,22 @@ class AdaptiveLearningRateTrainer(Trainer):
     Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
         = adjust_freq, factor = factor, autoInit = False)
-    _, _, self.train_data = self.train_dp.get_next_batch()
-    train_data = self.get_next_minibatch(0)
+    _, batch, self.train_data = self.train_dp.get_next_batch()
     #if self.train_data['data'].shape[1] > 1000:
     #  train_data = (self.train_data['data'][:, :1000] , self.train_data['labels'][:1000])
     #else:
     #  train_data = self.train_data
-    _,_, self.test_data = self.test_dp.get_next_batch()
+
+    train_data = self.get_next_minibatch(0)
+    self.train_dp.del_batch(batch)
+
+    _, batch, self.test_data = self.test_dp.get_next_batch()
     #if self.test_data['data'].shape[1] > 1000:
     #  test_data = (self.test_data['data'][:, :1000], self.train_data['labels'][:1000])
     #else:
     #  test_data = self.test_data
     test_data = self.get_next_minibatch(0)
+    self.test_dp.del_batch(batch)
 
     #test_data = self.get_next_minibatch(0)
     #test_data = train_data
@@ -275,15 +279,17 @@ class LayerwisedTrainer(AutoStopTrainer):
         self.net.add_parameterized_layers(next_n_filter, next_size_filter, self.fc_nouts)
         self.init_data_provider()
         self.scheduler = Scheduler(self)
+        self.test_outputs = []
+        self.train_outputs = []
         AutoStopTrainer.train(self)
 
 
 
 if __name__ == '__main__':
   test_des_file = './testdes'
-  factor = [1.5, 1.2, 0.8, 0.66]
-  test_id = 20
-  description = 'compare to 19, the initial learning rate is 2'
+  factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
+  test_id = 26
+  description = 'compare to test 24, adjustment freq is 10'
 
   lines = [line for line in open(test_des_file)]
   test_des = {int(line.split()[0]):line.split()[1] for line in lines }
@@ -303,7 +309,7 @@ if __name__ == '__main__':
   test_range = range(41, 49)
 
   save_freq = test_freq = 10
-  adjust_freq = 40
+  adjust_freq = 10
   batch_size = 128
   num_epoch = 30
 

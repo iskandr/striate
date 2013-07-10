@@ -52,6 +52,7 @@ class DataProvider(object):
       random.shuffle(self.batch_range)
       self.curr_epoch += 1
     self.curr_batch = self.batch_range[self.curr_batch_index]
+    #print self.batch_range, self.curr_batch
 
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
@@ -59,6 +60,11 @@ class DataProvider(object):
     self.data['data'] = self.data['data']-self.batch_meta['data_mean']
     self.data['labels'] = np.array(self.data['labels'])
     return  self.curr_epoch, self.curr_batch, self.data
+
+  def del_batch(self, batch):
+    print 'delete batch', batch
+    self.batch_range.remove(batch)
+    print self.batch_range
 
 
   def get_batch_size(self):
