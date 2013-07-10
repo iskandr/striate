@@ -12,7 +12,6 @@ TEST = 0
 TRAIN = 1
 
 class Layer(object):
-
   def __init__(self, name, type):
     self.name = name
     self.type = type
@@ -64,7 +63,7 @@ class WeightedLayer(Layer):
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
-  
+
 
   def update(self):
     matrix_add(self.weight, self.weightGrad, beta = self.epsW/ self.batchSize)
@@ -103,12 +102,10 @@ class ConvLayer(WeightedLayer):
     stride = ld['stride']
     initW = ld['initW']
     initB = ld['initB']
-    name = ld['name']
-    epsW = ld['epsW']
-    epsB = ld['epsB']
-    imgSize = ld['imgSize']
-    bias  = ld['bias']
-    weight = ld['weight']
+    epsW = ld['epsW'] if 'epsW' in ld else 0.001
+    epsB = ld['epsB'] if 'epsB' in ld else 0.002
+    bias  = ld['bias'] if 'bias' in ld else None
+    weight = ld['weight'] if 'weight' in ld else None
     name = ld['name']
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
@@ -202,7 +199,7 @@ class MaxPoolLayer(Layer):
     stride = ld['stride']
     start = ld['start']
     poolSize = ld['sizeX']
-    img_shape = self.imgShapes[-1]
+    img_shape = ld['imgShape']
     name = ld['name']
     return MaxPoolLayer(name, img_shape, poolSize, stride, start)
 
@@ -275,18 +272,18 @@ class FCLayer(WeightedLayer):
     self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, type, epsW, epsB, initW, initB, weight, bias, self.weightShape,
         self.biasShape)
-    
+
 
   @staticmethod
   def parseFromFASTNET(ld):
-    epsB = ld['epsB']
-    epsW = ld['epsW']
-    initB = ld['initB']
-    initW = ld['initW']
+    epsB = ld['epsB'] if 'epsB' in ld else 0.002
+    epsW = ld['epsW'] if 'epsW' in ld else 0.001
+    initB = ld['initB'] if 'initB' in ld else 0.00
+    initW = ld['initW'] if 'initW' in ld else 0.01
 
     n_out = ld['outputSize']
-    bias = ld['bias']
-    weight = ld['weight']
+    bias = ld['bias'] if 'bias' in ld else None
+    weight = ld['weight'] if 'wight' in ld else None
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
@@ -440,6 +437,22 @@ class NeuronLayer(Layer):
 
   @staticmethod
   def parseFromFASTNET(ld):
+    name = ld['name']
+    img_shape = ld['imgShape']
+    if ld['type'] = 'relu':
+      e = ld['e']
+      return NeuronLayer(name, img_shape, type = 'relu', e = e)
+
+    if ld['type'] = 'tanh':
+      a = ld['a']
+      b = ld['b']
+      return NeuronLayer(name, imag_shape, type = 'tanh', a = a, b= b)
+
+    assert False, 'No implementation for the neuron type' + ld['neuron']['type']
+
+
+  @staticmethod
+  def parseFromCUDACONVNET(ld):
     if ld['neuron']['type'] == 'relu':
       img_shape = ld['imgShape']
       name = ld['name']
@@ -454,9 +467,6 @@ class NeuronLayer(Layer):
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    return NeuronLayer.parseFromFASTNET(ld)
 
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
@@ -470,5 +480,6 @@ class NeuronLayer(Layer):
 
   def dump(self):
     d = Layer.dump(self)
-    d['neuron'] = self.neuron.dump()
+    for k, v in self.neuron.dump():
+      d[k] = v
     return d

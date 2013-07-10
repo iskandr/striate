@@ -28,12 +28,11 @@ class FastNet(object):
 
     self.numConv = 0
     if initModel:
-      self.initLayer(initModel)
+      self.append_layers_from_dict(initModel['model_state']['layers'])
       return
 
     if autoAdd:
-      self.autoAddLayer(numOutput)
-
+      self.autoAddLayerForCifar10(numOutput)
 
   def makeLayerFromFASTNET(self, ld):
     if ld['type'] == 'conv':
@@ -77,14 +76,13 @@ class FastNet(object):
     if ld['type'] == 'rnorm':
       return ResponseNormLayer.parseFromCUDACONVNET(ld)
 
-  def initLayer(self, m):
-    layers = m['model_state']['layers']
+  def append_layers_from_dict(self, layers):
     for l in layers:
       layer = self.makeLayerFromFASTNET(l)
       if layer:
         self.append_layer(layer)
 
-  def autoAddLayer(self, n_out):
+  def autoAddLayerForCifar10(self, n_out):
     conv1 = ConvLayer('conv1', filter_shape = (64, 3, 5, 5), image_shape = self.imgShapes[-1],
         padding = 2, stride = 1, initW = 0.0001, epsW = 0.001, epsB = 0.002)
     conv1.scaleLearningRate(self.learningRate)
@@ -122,7 +120,7 @@ class FastNet(object):
 
   def add_parameterized_layers(self, n_filters = None, size_filters = None, fc_nout = [10]):
     if n_filters is None or n_filters == []:
-      self.autoAddLayer(fc_nout[-1])
+      self.autoAddLayerForCifar10(fc_nout[-1])
     else:
       for i in range(len(n_filters)):
         prev = n_filters[i-1] if i > 0 else self.imgShapes[-1][1]

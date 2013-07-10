@@ -284,7 +284,6 @@ class LayerwisedTrainer(AutoStopTrainer):
         AutoStopTrainer.train(self)
 
 
-
 if __name__ == '__main__':
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
