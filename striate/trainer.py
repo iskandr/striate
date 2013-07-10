@@ -220,7 +220,7 @@ class AdaptiveLearningRateTrainer(Trainer):
     #  test_data = (self.test_data['data'][:, :1000], self.train_data['labels'][:1000])
     #else:
     #  test_data = self.test_data
-    test_data = self.get_next_minibatch(0)
+    test_data = self.get_next_minibatch(0, TEST)
     self.test_dp.del_batch(batch)
 
     #test_data = self.get_next_minibatch(0)
@@ -288,8 +288,8 @@ class LayerwisedTrainer(AutoStopTrainer):
 if __name__ == '__main__':
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
-  test_id = 26
-  description = 'compare to test 24, adjustment freq is 10'
+  test_id = 28
+  description = 'compare to test 27, another try'
 
   lines = [line for line in open(test_des_file)]
   test_des = {int(line.split()[0]):line.split()[1] for line in lines }
@@ -309,7 +309,7 @@ if __name__ == '__main__':
   test_range = range(41, 49)
 
   save_freq = test_freq = 10
-  adjust_freq = 10
+  adjust_freq = 40
   batch_size = 128
   num_epoch = 30
 
