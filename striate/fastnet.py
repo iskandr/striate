@@ -9,6 +9,7 @@ import numpy as np
 import cudaconv2
 from pycuda import cumath
 from util import *
+from cuda_kernel import *
 from layer import *
 import sys
 
@@ -28,29 +29,38 @@ class FastNet(object):
 
     self.numConv = 0
     if initModel:
-      self.append_layers_from_dict(initModel['model_state']['layers'])
+      if 'model_state' in initModel:
+        self.append_layers_from_dict(initModel['model_state']['layers'])
+      else:
+        self.append_layers_from_dict(initModel) #param of layers
       return
 
-    if autoAdd:
+    if autoAdd: #for imagenet, use param file
       self.autoAddLayerForCifar10(numOutput)
 
   def makeLayerFromFASTNET(self, ld):
     if ld['type'] == 'conv':
+      ld['imgShape'] = self.imgShapes[-1]
       return ConvLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'pool':
+      ld['imgShape'] = self.imgShapes[-1]
       return MaxPoolLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'neuron':
+      ld['imgShape'] = self.imgShapes[-1]
       return NeuronLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'fc':
+      ld['inputShape'] = self.inputShapes[-1]
       return FCLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'softmax':
+      ld['inputShape'] = self.inputShapes[-1]
       return SoftmaxLayer.parseFromFASTNET(ld)
 
     if ld['type'] == 'rnorm':
+      ld['imgShape'] = self.imgShapes[-1]
       return ResponseNormLayer.parseFromFASTNET(ld)
 
   def makeLayerFromCUDACONVNET(self, ld):
@@ -165,6 +175,22 @@ class FastNet(object):
     del self.layers[-1], self.inputShapes[-1], self.imgShapes[-1], self.outputs[-1], self.grads[-1]
     print 'delete layer', name
     print 'the last layer would be', self.layers[-1].name
+
+  @staticmethod
+  def split_conv_to_stack(conv_params):
+    stack = []
+    s = []
+    for ld in conv_params:
+      if ld['type'] in ['fc', 'softmax']:
+        break
+      elif ld['type'] == 'conv':
+        if s != []:
+          stack.append(s)
+        s = [ld]
+      else:
+        s.append(ld)
+    stack.append(s)
+    return stack
 
   def fprop(self, data, probs):
     input = data

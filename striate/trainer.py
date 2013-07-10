@@ -1,21 +1,22 @@
 from fastnet import *
 from pycuda import gpuarray, driver as cuda, autoinit
 from pycuda.gpuarray import GPUArray
-from data import DataProvider, ParallelDataProvider
+from data import DataProvider, ParallelDataProvider, ImageNetDataProvider
 from options import *
 from util import timer
-import time
 import re
+import time
 from scheduler import *
 import sys
 import numpy as n
-
+import argparse
+from parser import *
 
 class Trainer:
   CHECKPOINT_REGEX = None
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
-      autoInit=True, adjust_freq = 1, factor = 1.0):
+      autoInit=True, initModel = None, adjust_freq = 1, factor = 1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.checkpoint_dir = checkpoint_dir
@@ -37,7 +38,8 @@ class Trainer:
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
     self.train_outputs = []
     self.test_outputs = []
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd = autoInit)
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd = autoInit,
+        initModel = initModel)
 
     self.num_batch = self.curr_epoch = self.curr_batch = 0
     self.train_data = None
@@ -48,8 +50,8 @@ class Trainer:
     self.checkpoint_file = ''
 
   def init_data_provider(self):
-    self.train_dp = DataProvider(self.batch_size, self.data_dir, self.train_range)
-    self.test_dp = DataProvider(self.batch_size, self.data_dir, self.test_range)
+    self.train_dp = DataProvider(self.data_dir, self.train_range)
+    self.test_dp = DataProvider(self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train = TRAIN):
@@ -177,19 +179,20 @@ class Trainer:
     self.report()
 
   def report(self):
-    print self.net.get_report() 
+    print self.net.get_report()
     timer.report()
 
 
 
 class AutoStopTrainer(Trainer):
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, auto_init=True,
-      auto_shop_alg = 'smooth'):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
+      auto_init=True, initModel = None,  auto_stop_alg = 'smooth'):
     Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size,num_epoch, image_size, image_color, learning_rate, n_out, auto_init)
+        save_freq, batch_size,num_epoch, image_size, image_color, learning_rate, n_out, auto_init,
+        initModel = initModel)
 
-    self.scheduler = Scheduler.makeScheduler(auto_shop_alg, self)
+    self.scheduler = Scheduler.makeScheduler(auto_stop_alg, self)
 
 
   def check_continue_trainning(self):
@@ -201,11 +204,11 @@ class AutoStopTrainer(Trainer):
 
 class AdaptiveLearningRateTrainer(Trainer):
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq =
-      10, factor = [1.0]):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, initModel =
+      None,  adjust_freq = 10, factor = [1.0]):
     Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
-        = adjust_freq, factor = factor, autoInit = False)
+        = adjust_freq, initModel = initModel, factor = factor, autoInit = False)
     _, batch, self.train_data = self.train_dp.get_next_batch()
     #if self.train_data['data'].shape[1] > 1000:
     #  train_data = (self.train_data['data'][:, :1000] , self.train_data['labels'][:1000])
@@ -237,7 +240,7 @@ class AdaptiveLearningRateTrainer(Trainer):
     print 'learningRare'
     for l in lis:
       print l[0]
-    
+
 
 
 
@@ -284,28 +287,95 @@ class LayerwisedTrainer(AutoStopTrainer):
         AutoStopTrainer.train(self)
 
 
+class ImageNetLayerwisedTrainer(AutoStopTrainer):
+  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, params):
+    AutoStopTrainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, False)
+
+    self.conv_params = []
+    self.fc_params = []
+    self.softmax_param = None
+
+    self.params = params
+
+    for ld in self.params:
+      if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron']:
+        self.conv_params.append(ld)
+      elif ld['type'] == 'fc':
+        self.fc_params.append(ld)
+      else:
+        self.softmax_param = ld
+
+    self.stack =  FastNet.split_conv_to_stack(self.conv_params)
+    print self.stack
+
+    if len(self.stack) == 1:
+      self.layerwised = False
+    else:
+      self.layerwised = True
+
+    initParam = self.stack[0] + self.fc_params + [self.softmax_param]
+    self.net.append_layers_from_dict(initParam)
+
+  def report(self):
+    pass
+
+  def init_data_provider(self):
+    self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
+    self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
+
+  def train(self):
+    AutoStopTrainer.train(self)
+    if self.layerwised:
+      for i, stack in enumerate(self.stack[1:]):
+        i += 1
+        model = load(self.checkpoint_file)
+        self.net = FastNet(self.learning_rate, self.image_shape, 0, initModel = model)
+
+        #delete softmax layer
+        self.net.del_layer()
+
+        for i in range(len(self.fc_params)):
+          self.net.del_layer()
+
+        if i != len(self.stack)-1:
+          self.net.disable_bprop()
+
+        layerParam = stack + self.fc_params + [self.softmax_param]
+        self.net.append_layers_from_dict(layerParam)
+
+        self.init_data_provider()
+        self.scheduler = Scheduler(self)
+        self.test_outputs = []
+        self.train_output = []
+        AutoStopTrainer.train(self)
+
+
 if __name__ == '__main__':
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
-  test_id = 28
+  test_id = 29
   description = 'compare to test 27, another try'
 
-  lines = [line for line in open(test_des_file)]
-  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
+#  lines = [line for line in open(test_des_file)]
+#  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
+#
+#  if test_id in  test_des.keys():
+#    print test_id, 'is already in test des file and the purpose is', test_des[test_id]
+#    sys.exit(1)
+#  else:
+#    print 'test id is', test_id, 'for', description
+#    line= '%d %s\n' % (test_id, description)
+#    with open(test_des_file, 'a') as f:
+#      f.write(line)
 
-  if test_id in  test_des.keys():
-    print test_id, 'is already in test des file and the purpose is', test_des[test_id]
-    sys.exit(1)
-  else:
-    print 'test id is', test_id, 'for', description
-    line= '%d %s\n' % (test_id, description)
-    with open(test_des_file, 'a') as f:
-      f.write(line)
-
-  data_dir = '/hdfs/cifar/data/cifar-10-python'
+  #data_dir = '/hdfs/imagenet/batches/'
+  data_dir = '/hdfs/imagenet/batches/imagesize-256/'
   checkpoint_dir = './checkpoint/'
+  param_file = './cifar.cfg'
   train_range = range(1, 41)
-  test_range = range(41, 49)
+  test_range = range(41, 42)
 
   save_freq = test_freq = 10
   adjust_freq = 40
@@ -325,6 +395,73 @@ if __name__ == '__main__':
   #    size_filters, fc_nouts)
   #trainer = AutoStopTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
-  trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, adjust_freq, factor)
+  #trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, adjust_freq, factor)
+  params = Parser(param_file).get_result()
+  print params
+  trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
+      test_range, test_freq, save_freq, batch_size, num_epoch,
+      image_size, image_color, learning_rate, 10, params)
   trainer.train()
+  '''
+
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--des_file', help = 'The description file', default='./testdes')
+  parser.add_argument('--test_id', help = 'The test id, Need to be exclusive', type = int)
+  description = ''
+  parser.add_argument('--data_dir', help = 'The data directory')
+  parser.add_argument('--checkpoint', help = 'The checkpoint file directory',default='./checkpoint')
+
+  parser.add_argument('--train_range', help = 'The range of train file')
+  parser.add_argument('--test_range', help = 'The range of test file')
+  parser.add_argument('--data', help = 'The type of data', choices=['cifar', 'imagenet'])
+  parser.add_argument('--save_freq', help = 'The frequency to save checkpoint', default= 10, type = int)
+  parser.add_argument('--test_freq', help = 'The frequency to test model', default = 10, type = int)
+  parser.add_argument('--num_epoch', help = 'The number of epoch', default =30, type = int)
+  parser.add_argument('--adjust_freq', help = 'The frequency to adjust learning rate', default = 40, type = int)
+  parser.add_argument('--batch_size', help = 'Batch size', default = 128, type = int)
+  parser.add_argument('--n_output', help = 'The number of output', type = int, default = 10)
+  parser.add_argument('--param_file', help = 'The layer parameter file', default = None)
+  parser.add_argument('--type', help = 'Model type', default= 'normal', choices = ['normal',
+    'adpative', 'layerwised', 'autostop', 'imagenet'])
+
+  factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
+  args = parser.parse_args()
+
+  image_color = 3
+  if args.data == 'cifar':
+    image_size = 32
+  else args.data == 'imagenet':
+    image_size = 224
+
+  args.train_range = string_to_int_list(args.train_range)
+  args.test_range = string_to_int_list(args.test_range)
+
+  n_filters = [64, 64]
+  size_filters = [5, 5]
+  fc_nouts = [10]
+
+  if args.type == 'normal':
+    trainer = Trainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
+        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
+        image_size, image_color, args.learning_rate, args.n_output)
+  elif args.type == 'adpative':
+    trainer = AdaptiveLearningRateTrainer(args.test_id, args.data_dir, args.checkpoint_dir,
+        args.train_range, args.test_range, args.test_freq, args.save_freq, args.batch_size,
+        args.num_epoch, image_size, image_color, args.learning_rate, args.n_output, args.adjust_freq, factor)
+  elif args.type == 'autostop':
+    trainer = AutoStopTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
+        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
+        image_size, image_color, args.learning_rate, args.n_output)
+  elif args.type == 'layerwised':
+    trainer = LayerwisedTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
+        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
+        image_size, image_color, args.learning_rate, n_filters, size_filters, fc_nouts)
+  else:
+    params = parser(args.param_file).get_result()
+    trainer = ImageNetLayerwisedTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
+        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
+        image_size, image_color, args.learning_rate, args.n_output, params)
+
+  trainer.train()
+  '''

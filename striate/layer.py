@@ -3,6 +3,7 @@ import numpy as np
 import cudaconv2
 from pycuda import cumath
 from util import *
+from cuda_kernel import *
 
 import sys
 
@@ -39,6 +40,7 @@ class Layer(object):
       if type(getattr(self, att)) != type(self.__init__) and type(getattr(self, att))!= type(lambda:1):
         d[att] = getattr(self, att)
     return d
+
 
 
 class WeightedLayer(Layer):
@@ -90,7 +92,7 @@ class ConvLayer(WeightedLayer):
 
     self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
     self.biasShape = (self.numFilter, 1)
-    WeightedLayer.__init__(self, name, type, epsW, epsB, initW, initB, weight, bias,
+    WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, weight, bias,
         self.weightShape, self.biasShape)
 
   @staticmethod
@@ -100,8 +102,8 @@ class ConvLayer(WeightedLayer):
     numColor = ld['numColor']
     padding = ld['padding']
     stride = ld['stride']
-    initW = ld['initW']
-    initB = ld['initB']
+    initW = ld['initW'] if 'initW' in ld else 0.01
+    initB = ld['initB'] if 'initB' in ld else 0.00
     epsW = ld['epsW'] if 'epsW' in ld else 0.001
     epsB = ld['epsB'] if 'epsB' in ld else 0.002
     bias  = ld['bias'] if 'bias' in ld else None
@@ -270,7 +272,7 @@ class FCLayer(WeightedLayer):
 
     self.weightShape = (self.outputSize, self.inputSize)
     self.biasShape = (self.outputSize, 1)
-    WeightedLayer.__init__(self, name, type, epsW, epsB, initW, initB, weight, bias, self.weightShape,
+    WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, weight, bias, self.weightShape,
         self.biasShape)
 
 
@@ -388,7 +390,7 @@ class Neuron:
     assert False, 'No Implementation of Gradient'
 
   def dump(self):
-    return {'type': self.type}
+    return {'neuron': self.type}
 
 class ReluNeuron(Neuron):
   def __init__(self, e):
@@ -439,11 +441,11 @@ class NeuronLayer(Layer):
   def parseFromFASTNET(ld):
     name = ld['name']
     img_shape = ld['imgShape']
-    if ld['type'] = 'relu':
+    if ld['neuron'] == 'relu':
       e = ld['e']
       return NeuronLayer(name, img_shape, type = 'relu', e = e)
 
-    if ld['type'] = 'tanh':
+    if ld['neuron'] == 'tanh':
       a = ld['a']
       b = ld['b']
       return NeuronLayer(name, imag_shape, type = 'tanh', a = a, b= b)
@@ -480,6 +482,6 @@ class NeuronLayer(Layer):
 
   def dump(self):
     d = Layer.dump(self)
-    for k, v in self.neuron.dump():
+    for k,v in self.neuron.dump().items():
       d[k] = v
     return d

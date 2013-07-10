@@ -1,26 +1,13 @@
 import sys
 import os
 import string
-
-def isfloat(value):
-  try:
-    float(value)
-    return True
-  except ValueError:
-    return False
-
-def isinteger(value):
-  try:
-    int(value)
-    return True
-  except ValueError:
-    return False
-
+from util import *
 
 class Parser:
   def __init__(self, parsing_file):
     assert os.path.exists(parsing_file)
     self.parsing_file = parsing_file
+    self.rst = []
     self.__parse()
 
   def get_result(self):
@@ -35,9 +22,11 @@ class Parser:
         elif line.startswith('['):
           name = line[1:line.find(']')]
           self.rst.append({'name':name})
+        elif len(line) == 0:
+          continue
         else:
           key = line[0:line.find('=')]
-          value = line[line.find('=')+1, -1]
+          value = line[line.find('=')+1: len(line)]
 
           if value.isdigit():
             value = int(value)
