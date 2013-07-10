@@ -11,6 +11,7 @@ import sys
 import numpy as n
 import argparse
 from parser import *
+import pprint
 
 class Trainer:
   CHECKPOINT_REGEX = None
@@ -298,11 +299,12 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
     self.softmax_param = None
 
     self.params = params
-
+  
+    conv = True
     for ld in self.params:
-      if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron']:
+      if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
         self.conv_params.append(ld)
-      elif ld['type'] == 'fc':
+      elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
       else:
         self.softmax_param = ld
@@ -373,12 +375,12 @@ if __name__ == '__main__':
   #data_dir = '/hdfs/imagenet/batches/'
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'
   checkpoint_dir = './checkpoint/'
-  param_file = './cifar.cfg'
-  train_range = range(1, 41)
-  test_range = range(41, 42)
+  param_file = './imagenet.cfg'
+  train_range = range(1, 401)
+  test_range = range(401, 650)
 
-  save_freq = test_freq = 10
-  adjust_freq = 40
+  save_freq = test_freq = 50
+  adjust_freq = 100
   batch_size = 128
   num_epoch = 30
 
@@ -398,7 +400,7 @@ if __name__ == '__main__':
   #trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, adjust_freq, factor)
   params = Parser(param_file).get_result()
-  print params
+  pprint.pprint(params)
   trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
       test_range, test_freq, save_freq, batch_size, num_epoch,
       image_size, image_color, learning_rate, 10, params)
