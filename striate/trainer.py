@@ -291,6 +291,10 @@ class LayerwisedTrainer(AutoStopTrainer):
 class ImageNetLayerwisedTrainer(AutoStopTrainer):
   def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, params):
+
+    self.origin_test_range = test_range
+    if len(test_range) != 1:
+      test_range = [test_range[0]]
     AutoStopTrainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, False)
 
@@ -299,26 +303,24 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
     self.softmax_param = None
 
     self.params = params
-  
+
     conv = True
     for ld in self.params:
       if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
         self.conv_params.append(ld)
       elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
+        conv = False
       else:
         self.softmax_param = ld
 
-    self.stack =  FastNet.split_conv_to_stack(self.conv_params)
-    print self.stack
+    self.conv_stack =  FastNet.split_conv_to_stack(self.conv_params)
+    self.fc_stack = FastNet.split_fc_to_stack(self.fc_params)
 
-    if len(self.stack) == 1:
-      self.layerwised = False
-    else:
-      self.layerwised = True
+    pprint.pprint(self.conv_stack)
+    pprint.pprint(self.fc_stack)
 
-    initParam = self.stack[0] + self.fc_params + [self.softmax_param]
-    self.net.append_layers_from_dict(initParam)
+    self.fakefc_param = self.fc_stack[-1][0]
 
   def report(self):
     pass
@@ -328,36 +330,67 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
     self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
 
   def train(self):
-    AutoStopTrainer.train(self)
-    if self.layerwised:
-      for i, stack in enumerate(self.stack[1:]):
-        i += 1
+    #train conv stack layer by layer
+    for i, stack in enumerate(self.conv_stack):
+      if self.checkpoint_file != '':
         model = load(self.checkpoint_file)
-        self.net = FastNet(self.learning_rate, self.image_shape, 0, initModel = model)
-
+        self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
         #delete softmax layer
         self.net.del_layer()
+        self.net.del_layer()
 
-        for i in range(len(self.fc_params)):
-          self.net.del_layer()
+        #for i in range(len(self.fc_params)):
+        #  self.net.del_layer()
 
-        if i != len(self.stack)-1:
-          self.net.disable_bprop()
+        self.net.disable_bprop()
 
-        layerParam = stack + self.fc_params + [self.softmax_param]
-        self.net.append_layers_from_dict(layerParam)
+      layerParam = stack + [self.fakefc_param, self.softmax_param]
+      self.net.append_layers_from_dict(layerParam)
 
-        self.init_data_provider()
-        self.scheduler = Scheduler(self)
-        self.test_outputs = []
-        self.train_output = []
-        AutoStopTrainer.train(self)
+      self.init_data_provider()
+      self.scheduler.reset()
+      self.scheduler.set_level(i)
+      self.test_outputs = []
+      self.train_output = []
+      AutoStopTrainer.train(self)
+
+    #train fc layer
+    for i, stack in enumerate(self.fc_stack):
+      model = load(self.checkpoint_file)
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+      self.net.del_layer()
+      self.net.del_layer()
+
+      self.net.disable_bprop()
+
+      if i == len(self.fc_stack) - 1:
+        layerParam = stack + [self.softmax_param]
+      else:
+        layerParam = stack + [self.fakefc_param, self.softmax_param]
+      self.net.append_layers_from_dict(layerParam)
+
+      self.init_data_provider()
+      self.scheduler.reset()
+      self.scheduler.set_level(i)
+      self.test_outputs = []
+      self.train_output = []
+      AutoStopTrainer.train(self)
+
+    model = load(self.checkpoint_file)
+    self.test_id += 1
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+    self.test_range = self.origin_test_range
+    self.init_data_provider()
+    self.scheduler = Scheduler(self)
+    self.num_epoch /= 2
+    AutoStopTrainer.train(self)
+
 
 
 if __name__ == '__main__':
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
-  test_id = 29
+  test_id = 30
   description = 'compare to test 27, another try'
 
 #  lines = [line for line in open(test_des_file)]
@@ -371,27 +404,40 @@ if __name__ == '__main__':
 #    line= '%d %s\n' % (test_id, description)
 #    with open(test_des_file, 'a') as f:
 #      f.write(line)
-
-  #data_dir = '/hdfs/imagenet/batches/'
+  #parameters for imagenet
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'
-  checkpoint_dir = './checkpoint/'
   param_file = './imagenet.cfg'
   train_range = range(1, 401)
   test_range = range(401, 650)
+  save_freq = test_freq = 10
+  adjust_freq = 10
+  image_size = 224
+  n_out = 1000
 
-  save_freq = test_freq = 50
-  adjust_freq = 100
+  #parameter for cifar10
+  #data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  #param_file = './cifar10.cfg'
+  #train_range = range(1, 41)
+  #test_range = range(41, 49)
+  #save_freq = test_freq = 10
+  #adjust_freq = 40
+  #image_size = 32
+  #n_out = 10
+
+  checkpoint_dir = './checkpoint/'
+
   batch_size = 128
   num_epoch = 30
 
-  image_size = 32
   image_color = 3
   learning_rate = 1.28
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
+
+  #model = load('./checkpoint/test29-17.20')
   #trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq,
-  #     batch_size, num_epoch, image_size, image_color, learning_rate, 10)
+  #     batch_size, num_epoch, image_size, image_color, learning_rate, 10, initModel = model)
   #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
   #    size_filters, fc_nouts)
@@ -403,7 +449,7 @@ if __name__ == '__main__':
   pprint.pprint(params)
   trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
       test_range, test_freq, save_freq, batch_size, num_epoch,
-      image_size, image_color, learning_rate, 10, params)
+      image_size, image_color, learning_rate, n_out, params)
   trainer.train()
   '''
 

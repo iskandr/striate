@@ -192,6 +192,22 @@ class FastNet(object):
     stack.append(s)
     return stack
 
+  @staticmethod
+  def split_fc_to_stack(fc_params):
+    stack = []
+    s = []
+    for ld in fc_params:
+      if ld['type'] == 'softmax':
+        break
+      elif ld['type'] == 'fc':
+        if s != []:
+          stack.append(s)
+        s = [ld]
+      else:
+        s.append(ld)
+    stack.append(s)
+    return stack
+
   def fprop(self, data, probs):
     input = data
     for i in range(len(self.layers)):
@@ -297,7 +313,6 @@ class FastNet(object):
     timer.end('prepare end')
 
   def train_batch(self, data, label, train = TRAIN):
-
     self.prepare_for_train(data, label)
     self.fprop(self.data, self.output)
     cost, correct = self.get_cost(self.label, self.output)

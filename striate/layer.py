@@ -87,7 +87,7 @@ class ConvLayer(WeightedLayer):
     self.padding = padding
     self.stride = stride
 
-    self.outputSize = 1 + int(((2 * self.padding + self.imgSize - self.filterSize) / float(self.stride)))
+    self.outputSize = 1 + ceil(2 * self.padding + self.imgSize - self.filterSize, self.stride)
     self.modules = self.outputSize ** 2
 
     self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
@@ -285,7 +285,7 @@ class FCLayer(WeightedLayer):
 
     n_out = ld['outputSize']
     bias = ld['bias'] if 'bias' in ld else None
-    weight = ld['weight'] if 'wight' in ld else None
+    weight = ld['weight'] if 'weight' in ld else None
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)

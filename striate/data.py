@@ -196,7 +196,7 @@ class ImageNetDataProvider(DataProvider):
     align_time = time.time() - st
 
     labels = np.array(labels)
-    labels = labels.reshape((1, cropped.shape[1]))
+    labels = labels.reshape(cropped.shape[1], )
     labels = np.require(labels, dtype=np.single, requirements='C')
 
     logging.info("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
@@ -220,7 +220,9 @@ class ImageNetDataProvider(DataProvider):
 if __name__ == "__main__":
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'
   dp = ImageNetDataProvider(data_dir, [1, 2, 3, 4, 5 ])
-  for i in range(12):
+  #data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  #dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
+  for i in range(1):
     epoch, batch, data = dp.get_next_batch()
-    print data['data'][:, 0:100]
+    print data['data'].shape, data['labels'].shape
     print epoch, batch
