@@ -4,12 +4,12 @@ Created on Jun 11, 2013
 @author: justin
 '''
 
-from pycuda import gpuarray, driver as cuda, autoinit
+from pycuda import gpuarray, driver as cuda
 import numpy as np
 import cudaconv2
 from pycuda import cumath
 from util import *
-from cuda_kernel import *
+#from cuda_kernel import *
 from layer import *
 import sys
 
@@ -62,6 +62,10 @@ class FastNet(object):
     if ld['type'] == 'rnorm':
       ld['imgShape'] = self.imgShapes[-1]
       return ResponseNormLayer.parseFromFASTNET(ld)
+
+    if ld['type'] == 'cmrnorm':
+      ld['imgShape'] = self.imgShapes[-1]
+      return CrossMapResponseNormLayer.parseFromFASTNET(ld)
 
   def makeLayerFromCUDACONVNET(self, ld):
     if ld['type'] == 'conv':
@@ -208,17 +212,17 @@ class FastNet(object):
     stack.append(s)
     return stack
 
-  def fprop(self, data, probs):
+  def fprop(self, data, probs, train = TRAIN):
     input = data
     for i in range(len(self.layers)):
       l = self.layers[i]
-      l.fprop(input, self.outputs[i])
+      l.fprop(input, self.outputs[i], train)
       input = self.outputs[i]
 
     #probs.shape = self.outputs[-1].shape
     gpu_copy_to(self.outputs[-1], probs)
 
-  def bprop(self, data, label, prob):
+  def bprop(self, data, label, prob, train = TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
 
@@ -314,7 +318,8 @@ class FastNet(object):
 
   def train_batch(self, data, label, train = TRAIN):
     self.prepare_for_train(data, label)
-    self.fprop(self.data, self.output)
+    #printMatrix(data, 'data')
+    self.fprop(self.data, self.output, train)
     cost, correct = self.get_cost(self.label, self.output)
     self.cost += cost
     self.correct += correct

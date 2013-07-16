@@ -1,5 +1,7 @@
 import time
 import cPickle
+from pycuda.gpuarray import GPUArray
+
 class Timer:
   def __init__(self):
     self.func_time = {}
@@ -58,3 +60,14 @@ def string_to_int_list(str):
   else:
     elt = int(str)
     return [elt]
+
+
+def printMatrix(x, name):
+  print name
+  if isinstance(x, GPUArray):
+    a = x.get()[:, 0]
+  else:
+    a = x[:, 0]
+
+  for i in a:
+    print '%.15f ' % i

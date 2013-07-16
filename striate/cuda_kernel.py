@@ -3,7 +3,7 @@ import sys
 from time import time
 from util import *
 import pycuda
-import pycuda.autoinit
+#import pycuda.autoinit
 from pycuda import gpuarray
 from pycuda.gpuarray import GPUArray
 from pycuda.elementwise import ElementwiseKernel
@@ -508,8 +508,8 @@ _gpu_partial_copy_to_ = CompiledSource('''
     __global__
     void gpu_partial_copy_to(float* src, float* dest, int row_from, int row_to, int col_from, int
     col_to, int sleading, int dleading) {
-      int i = blockIdx.x * blockDim.y + threadIdx.x;
-      int j = blockIdx.x * blockDim.y + threadIdx.y;
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
 
       if( i >= col_to - col_from) return;
       if( j >= row_to - row_from) return;
@@ -519,6 +519,21 @@ _gpu_partial_copy_to_ = CompiledSource('''
 
       dest[didx] = src[sidx];
     }''', 'gpu_partial_copy_to')
+
+_bigger_than_scaler_ = CompiledSource( '''
+    __global__
+    void bigger_than_scaler(float* src, float* dest, float scaler, int rows, int cols, int leading)
+    {
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if (i >= cols) return ;
+      if (j >= rows) return ;
+
+      int idx = i + j * leading;
+
+      dest[idx] = src[idx] >= scaler ? 1.0 : 0.0;
+    }''', 'bigger_than_scaler')
 
 
 def row_max_reduce(x, mat):
@@ -682,7 +697,10 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   mh, mw = mat.shape
   vh, vw = vec.shape
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
-  cudaconv2.sum(mat, 1, vec)
+  if mw != 1:
+    cudaconv2.sum(mat, 1, vec)
+  else:
+    gpu_partial_copy_to(mat, vec, 0, mh, 0, 1)
   #if mat.shape[1] <= INTERNAL_SIZE:
   #  grid = (1, mh)
   #  block = (mw, 1,  1)
@@ -905,10 +923,17 @@ def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
     dest = src
   _matrix_add_(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), block = block , grid =
       grid)
-'''
-def printMatrix(x, name):
-  print name
-  a = x.get()[:, 0]
-  for i in a:
-    print '%.15f ' % i
-'''
+
+
+def bigger_than_scaler(src, scaler, dest = None):
+  if dest is not None:
+    assert dest.shape == src.shape
+  else:
+    dest = src
+
+  mh, mw = src.shape
+
+  block = (32, 32, 1)
+  grid = (ceil(mw, 32), ceil(mh, 32))
+  leading = src.strides[0] / 4
+  _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block= block , grid = grid)

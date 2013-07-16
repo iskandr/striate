@@ -1,9 +1,29 @@
-from fastnet import *
-from pycuda import gpuarray, driver as cuda, autoinit
+import sys
+from pycuda import gpuarray, driver as cuda
+cuda.init()
+device_info = (0, 0)
+for i in range(cuda.Device.count()):
+  dev = cuda.Device(i)
+  ctx = dev.make_context()
+  ctx.push()
+  free, total = cuda.mem_get_info()
+  print 'Free Memory for Device', i, 'is', free/1000000,'MB'
+
+  if device_info[1] < free:
+    device_info = (i, free)
+
+  ctx.pop()
+  ctx.detach()
+
+print 'Choose Device', device_info[0]
+dev = cuda.Device(device_info[0])
+ctx = dev.make_context()
+ctx.push()
+
 from pycuda.gpuarray import GPUArray
 from data import DataProvider, ParallelDataProvider, ImageNetDataProvider
 from options import *
-from util import timer
+from util import *
 import re
 import time
 from scheduler import *
@@ -12,12 +32,11 @@ import numpy as n
 import argparse
 from parser import *
 import pprint
+from fastnet import *
 
 class Trainer:
   CHECKPOINT_REGEX = None
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
-      autoInit=True, initModel = None, adjust_freq = 1, factor = 1.0):
+  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True, initModel = None, adjust_freq = 1, factor = 1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.checkpoint_dir = checkpoint_dir
@@ -53,6 +72,10 @@ class Trainer:
   def init_data_provider(self):
     self.train_dp = DataProvider(self.data_dir, self.train_range)
     self.test_dp = DataProvider(self.data_dir, self.test_range)
+
+  #def init_data_provider(self):
+  #  self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
+  #  self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train = TRAIN):
@@ -388,10 +411,12 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 
 if __name__ == '__main__':
+
+
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
-  test_id = 30
-  description = 'compare to test 27, another try'
+  test_id = int(sys.argv[2])
+  description = 'first try with momentum'
 
 #  lines = [line for line in open(test_des_file)]
 #  test_des = {int(line.split()[0]):line.split()[1] for line in lines }
@@ -405,25 +430,28 @@ if __name__ == '__main__':
 #    with open(test_des_file, 'a') as f:
 #      f.write(line)
   #parameters for imagenet
-  data_dir = '/hdfs/imagenet/batches/imagesize-256/'
-  param_file = './imagenet.cfg'
-  train_range = range(1, 401)
-  test_range = range(401, 650)
-  save_freq = test_freq = 10
-  adjust_freq = 10
-  image_size = 224
-  n_out = 1000
+  #data_dir = '/hdfs/imagenet/batches/imagesize-256/'
+  ##param_file = './imagenet.cfg'
+  ##param_file = './single.cfg'
+  #print 'Using param file', param_file
+  #train_range = range(1, 401)
+  #test_range = range(401, 650)
+  #save_freq = test_freq = 100
+  #adjust_freq = 100
+  #image_size = 224
+  #n_out = 1000
 
   #parameter for cifar10
-  #data_dir = '/hdfs/cifar/data/cifar-10-python/'
-  #param_file = './cifar10.cfg'
-  #train_range = range(1, 41)
-  #test_range = range(41, 49)
-  #save_freq = test_freq = 10
-  #adjust_freq = 40
-  #image_size = 32
-  #n_out = 10
+  data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  param_file = './cifar10.cfg'
+  train_range = range(1, 41)
+  test_range = range(41, 49)
+  save_freq = test_freq = 10
+  adjust_freq = 40
+  image_size = 32
+  n_out = 10
 
+  param_file = sys.argv[1]
   checkpoint_dir = './checkpoint/'
 
   batch_size = 128
@@ -435,9 +463,11 @@ if __name__ == '__main__':
   size_filters = [5, 5]
   fc_nouts = [10]
 
+  model = Parser(param_file).get_result()
   #model = load('./checkpoint/test29-17.20')
-  #trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq,
-  #     batch_size, num_epoch, image_size, image_color, learning_rate, 10, initModel = model)
+  print model
+  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq,
+       batch_size, num_epoch, image_size, image_color, learning_rate, n_out, initModel = model)
   #trainer = LayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
   #    size_filters, fc_nouts)
@@ -445,12 +475,12 @@ if __name__ == '__main__':
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10)
   #trainer = AdaptiveLearningRateTrainer(test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
   #    save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 10, adjust_freq, factor)
-  params = Parser(param_file).get_result()
-  pprint.pprint(params)
-  trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
-      test_range, test_freq, save_freq, batch_size, num_epoch,
-      image_size, image_color, learning_rate, n_out, params)
+  #pprint.pprint(params)
+  #trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
+  #    test_range, test_freq, save_freq, batch_size, num_epoch,
+  #    image_size, image_color, learning_rate, n_out, params)
   trainer.train()
+
   '''
 
   parser = argparse.ArgumentParser()
@@ -513,3 +543,6 @@ if __name__ == '__main__':
 
   trainer.train()
   '''
+
+ctx.pop()
+ctx.detach()

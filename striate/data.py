@@ -10,6 +10,7 @@ import zipfile
 from PIL import Image
 import cStringIO as c
 import synids
+from util import *
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -192,6 +193,7 @@ class ImageNetDataProvider(DataProvider):
     st = time.time()
     cropped = cropped.astype(np.single)
     cropped = np.require(cropped, dtype=np.single, requirements='C')
+
     cropped -= self.data_mean
     align_time = time.time() - st
 
@@ -219,10 +221,9 @@ class ImageNetDataProvider(DataProvider):
 
 if __name__ == "__main__":
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'
-  dp = ImageNetDataProvider(data_dir, [1, 2, 3, 4, 5 ])
+  dp = ImageNetDataProvider(data_dir, [1])
   #data_dir = '/hdfs/cifar/data/cifar-10-python/'
   #dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
   for i in range(1):
     epoch, batch, data = dp.get_next_batch()
-    print data['data'].shape, data['labels'].shape
-    print epoch, batch
+    printMatrix(data['data'], 'data')
