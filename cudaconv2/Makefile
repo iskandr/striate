@@ -10,10 +10,10 @@ all: _cudaconv2.so
 _cudaconv2.so: ${OBJ}
 	nvcc -shared -o $@ $^
 
-cudaconv2_wrap.cu: cudaconv2.i
-	swig -python -c++ -o cudaconv2_wrap.cu ${INCLUDES} cudaconv2.i 
+cudaconv2_wrap.cu: cudaconv2.i Makefile
+	swig -python -threads -c++ -o cudaconv2_wrap.cu ${INCLUDES} cudaconv2.i 
 
-%.o : %.cu
+%.o : %.cu Makefile
 	nvcc -arch=sm_20 -O3 -g -c -o $@ $^  ${NVCC_OPTS} ${CXX_FLAGS} ${INCLUDES}
 
 clean:
