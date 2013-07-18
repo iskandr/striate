@@ -87,7 +87,6 @@ class ParallelDataProvider(DataProvider):
   def __init__(self, data_dir='.', batch_range=None):
     DataProvider.__init__(self, data_dir, batch_range)
     self._thread = None
-    self._start_read()
     self._batch_return = None
 
   def _start_read(self):
@@ -99,6 +98,9 @@ class ParallelDataProvider(DataProvider):
     self._batch_return = self._get_next_batch()
 
   def get_next_batch(self):
+    if self._thread is None:
+      self._start_read()
+
     self._thread.join()
     result = self._batch_return
     self._start_read()
