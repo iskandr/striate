@@ -1,6 +1,5 @@
 from PIL import Image
-from multiprocessing import Process, Queue, Manager
-from pycuda import driver
+from multiprocessing import Process, Queue
 from striate import util
 from striate.util import printMatrix
 import cPickle
@@ -113,6 +112,8 @@ class ParallelDataProvider(DataProvider):
 
   def run_in_back(self):
     while 1:
+      # while self._data_queue.qsize() > 0:
+      #  time.sleep(0.1)
       result = self._get_next_batch()
       self._data_queue.put(result)
 

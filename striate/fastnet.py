@@ -33,10 +33,13 @@ class FastNet(object):
         self.append_layers_from_dict(initModel['model_state']['layers'])
       else:
         self.append_layers_from_dict(initModel)  # param of layers
-      return
-
-    if autoAdd:  # for imagenet, use param file
+    elif autoAdd:  # for imagenet, use param file
       self.autoAddLayerForCifar10(numOutput)
+
+    self.adjust_learning_rate(self.learningRate)
+
+    for l in self.layers:
+      util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
   def makeLayerFromFASTNET(self, ld):
     if ld['type'] == 'conv':
@@ -99,7 +102,6 @@ class FastNet(object):
   def autoAddLayerForCifar10(self, n_out):
     conv1 = ConvLayer('conv1', filter_shape=(64, 3, 5, 5), image_shape=self.imgShapes[-1],
         padding=2, stride=1, initW=0.0001, epsW=0.001, epsB=0.002)
-    conv1.scaleLearningRate(self.learningRate)
     self.append_layer(conv1)
 
     conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1], type='relu', e=0.0)
@@ -113,7 +115,6 @@ class FastNet(object):
 
     conv2 = ConvLayer('conv2', filter_shape=(64, 64, 5, 5) , image_shape=self.imgShapes[-1],
         padding=2, stride=1, initW=0.01, epsW=0.001, epsB=0.002)
-    conv2.scaleLearningRate(self.learningRate)
     self.append_layer(conv2)
 
     conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1], type='relu', e=0.0)
@@ -126,7 +127,6 @@ class FastNet(object):
     self.append_layer(pool2)
 
     fc1 = FCLayer('fc', self.inputShapes[-1], n_out)
-    fc1.scaleLearningRate(self.learningRate)
     self.append_layer(fc1)
 
     softmax1 = SoftmaxLayer('softmax', self.inputShapes[-1])
@@ -141,7 +141,6 @@ class FastNet(object):
         filter_shape = (n_filters[i], prev, size_filters[i], size_filters[i])
         conv = ConvLayer('conv' + str(self.numConv), filter_shape, self.imgShapes[-1])
         self.append_layer(conv)
-        conv.scaleLearningRate(self.learningRate)
 
         neuron = NeuronLayer('neuron' + str(self.numConv), self.imgShapes[-1], type='tanh')
         self.append_layer(neuron)
@@ -170,7 +169,7 @@ class FastNet(object):
     self.imgShapes.append(outputShape)
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
-    util.log('Allocating %s bytes', np.prod(self.inputShapes[-2]) * 4)
+#    util.log('Allocating %s bytes', np.prod(self.inputShapes[-2]) * 4)
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
     print 'append layer', layer.name, 'to network'
     print 'the output of the layer is', outputShape
@@ -248,7 +247,7 @@ class FastNet(object):
   def adjust_learning_rate(self, factor=1.0):
     for layer in self.layers:
       if isinstance(layer, WeightedLayer):
-        l.scaleLearningRate(factor)
+        layer.scaleLearningRate(factor)
 
   def get_cost(self, label, output):
     outputLayer = self.layers[-1]

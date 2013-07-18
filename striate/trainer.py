@@ -41,7 +41,7 @@ class Trainer:
     self.train_outputs = []
     self.test_outputs = []
     self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd=autoInit,
-        initModel=initModel)
+                       initModel=initModel)
 
     self.num_batch = self.curr_epoch = self.curr_batch = 0
     self.train_data = None
@@ -83,11 +83,11 @@ class Trainer:
     mh, mw = batch_data.shape
 
     mini_data = batch_data[:, i * batch_size: (i + 1) * batch_size]
-    # locked_data = driver.aligned_empty(mini_data.shape, mini_data.dtype, order='C')
-    # locked_data = driver.register_host_memory(locked_data)
-    # locked_data[:] = mini_data
+    locked_data = driver.pagelocked_empty(mini_data.shape, mini_data.dtype, order='C',
+                                          mem_flags=driver.host_alloc_flags.DEVICEMAP)
+    locked_data[:] = mini_data
 
-    input = gpuarray.to_gpu(mini_data)
+    input = gpuarray.to_gpu(locked_data)
     label = batch_label[i * batch_size : (i + 1) * batch_size]
 
     return input, label
@@ -402,8 +402,8 @@ if __name__ == '__main__':
   # param_file = './single.cfg'
 
   print 'Using param file', param_file
-  train_range = range(1, 401)
-  test_range = range(401, 650)
+  train_range = range(1, 600)
+  test_range = range(600, 650)
   save_freq = test_freq = 100
   adjust_freq = 100
   image_size = 224
@@ -416,7 +416,7 @@ if __name__ == '__main__':
   num_epoch = 30
 
   image_color = 3
-  learning_rate = 1.28
+  learning_rate = 0.1
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]

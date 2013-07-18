@@ -1,11 +1,12 @@
-from pycuda import gpuarray, driver as cuda
-import numpy as np
-import cudaconv2
-from pycuda import cumath
-from util import *
 from cuda_kernel import *
-
+from pycuda import cumath, gpuarray, driver as cuda
+from striate.util import *
+import cudaconv2
+import numpy as np
 import sys
+
+from striate import util
+
 
 PFout = False
 PBout = False
@@ -56,8 +57,7 @@ class WeightedLayer(Layer):
     self.wc = wc
 
     if weight is None:
-      self.weight = gpuarray.to_gpu(np.random.randn(*weightShape) *
-          self.initW).astype(np.float32)
+      self.weight = gpuarray.to_gpu(np.random.randn(*weightShape) * self.initW).astype(np.float32)
     else:
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
@@ -129,8 +129,9 @@ class ConvLayer(WeightedLayer):
     name = ld['name']
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
-        momB, wc, bias, weight)
+    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
+                     momB, wc, bias, weight)
+    return cv
 
   @staticmethod
   def parseFromCUDACONVNET(ld):
