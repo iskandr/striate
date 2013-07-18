@@ -9,3 +9,5 @@ def init():
   device = context.get_device()
   import atexit
   atexit.register(context.detach)
+
+  return context

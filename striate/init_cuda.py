@@ -18,5 +18,5 @@ import cudaconv2
 # print 'Choose Device', device_info[0]
 # dev = driver.Device(device_info[0])
 
-cudaconv2.init()
+CONTEXT = cudaconv2.init()
 

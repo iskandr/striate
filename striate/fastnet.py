@@ -284,6 +284,7 @@ class FastNet(object):
       self.imgShapes = [(self.batchSize, self.numColor, self.imgSize, self.imgSize)]
       self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
       for layer in self.layers:
+        # layer.update_shape(...)
         outputShape = layer.get_output_shape()
         row = outputShape[1] * outputShape[2] * outputShape[3]
         col = outputShape[0]
@@ -295,12 +296,13 @@ class FastNet(object):
 
     timer.end('prepare transform')
 
+    timer.start()
     if not isinstance(data, GPUArray):
       self.data = gpuarray.to_gpu(data).astype(np.float32)
     else:
-      timer.start()
       self.data = data
-      timer.end('assignment')
+
+    timer.end('assignment')
 
     if not isinstance(label, GPUArray):
       self.label = gpuarray.to_gpu(label).astype(np.float32)

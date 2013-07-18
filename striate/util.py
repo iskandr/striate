@@ -18,7 +18,7 @@ def log(msg, *args, **kw):
       exc = ''.join(traceback.format_exc())
     else:
       exc = None
-    print >> sys.stderr, '%s:%s:%d: %s' % (now, os.path.basename(filename), lineno, msg % args)
+    print >> sys.stderr, '%.3f:%s:%d: %s' % (now, os.path.basename(filename), lineno, msg % args)
     if exc:
       print >> sys.stderr, exc
 

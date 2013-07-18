@@ -1,5 +1,5 @@
 from data import DataProvider, ImageNetDataProvider
-from pycuda import gpuarray
+from pycuda import gpuarray, driver
 from striate import util
 from striate.data import load
 from striate.fastnet import FastNet, AdaptiveFastNet
@@ -51,13 +51,13 @@ class Trainer:
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
 
-  def init_data_provider(self):
-    self.train_dp = DataProvider(self.data_dir, self.train_range)
-    self.test_dp = DataProvider(self.data_dir, self.test_range)
-
   # def init_data_provider(self):
-  #  self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
-  #  self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
+  #  self.train_dp = DataProvider(self.data_dir, self.train_range)
+  #  self.test_dp = DataProvider(self.data_dir, self.test_range)
+
+  def init_data_provider(self):
+    self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
+    self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train=TRAIN):
@@ -82,20 +82,13 @@ class Trainer:
 
     mh, mw = batch_data.shape
 
-    if i == num - 1:
-      input = gpuarray.to_gpu(np.require((batch_data[:, i * batch_size: (i + 1) * batch_size]), dtype=np.float32, requirements='C'))
-      # input = gpuarray.empty((mh, mw - i*batch_size), dtype = np.float32)
-      # gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
-      label = batch_label[i * batch_size : mw]
-    else:
-      # input = gpuarray.empty((mh, batch_size), dtype = np.float32)
-      # gpu_partial_copy_to(batch_data, input, 0, mh, i * batch_size, (i + 1) * batch_size)
-      input = gpuarray.to_gpu(np.require((batch_data[:, i * batch_size: (i + 1) * batch_size]), dtype=np.float32, requirements='C'))
-      # a = batch_data[:, i * batch_size:(i+1)* batch_size]
-      # input = cuda.mem_alloc(a.nbytes)
-      # cuda.memcpy_htod(input, a)
-      # input = gpuarray.GPUArray(a.shape, a.dtype, gpudata = input)
-      label = batch_label[i * batch_size: (i + 1) * batch_size]
+    mini_data = batch_data[:, i * batch_size: (i + 1) * batch_size]
+    # locked_data = driver.aligned_empty(mini_data.shape, mini_data.dtype, order='C')
+    # locked_data = driver.register_host_memory(locked_data)
+    # locked_data[:] = mini_data
+
+    input = gpuarray.to_gpu(mini_data)
+    label = batch_label[i * batch_size : (i + 1) * batch_size]
 
     return input, label
 
@@ -177,7 +170,10 @@ class Trainer:
         self.save_checkpoint()
         print '------------'
 
+      wait_time = time.time()
       self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()  # #self.train_dp.wait()
+      print 'waitting', time.time() - wait_time, 'secs to load'
+      print 'time to train a batch file is', time.time() - start
 
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
@@ -395,15 +391,14 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 if __name__ == '__main__':
 
-
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75, 0.66]
-  test_id = int(sys.argv[2])
+  test_id = int(sys.argv[1])
   description = 'first try with momentum'
 
   # parameters for imagenet
-  data_dir = '/hdfs/imagenet/batches/imagesize-256/'
-  param_file = './imagenet.cfg'
+  data_dir = '/ssd/nn-data/imagenet/imagesize-256/'
+  param_file = 'striate/imagenet.cfg'
   # param_file = './single.cfg'
 
   print 'Using param file', param_file
@@ -414,7 +409,7 @@ if __name__ == '__main__':
   image_size = 224
   n_out = 1000
 
-  param_file = sys.argv[1]
+  # param_file = sys.argv[1]
   checkpoint_dir = './checkpoint/'
 
   batch_size = 128
@@ -430,9 +425,9 @@ if __name__ == '__main__':
   # model = load('./checkpoint/test29-17.20')
   print model
 
-  trainer = ImageNetLayerwisedTrainer(test_id, data_dir, checkpoint_dir, train_range,
+  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range,
       test_range, test_freq, save_freq, batch_size, num_epoch,
-      image_size, image_color, learning_rate, n_out, model)
+      image_size, image_color, learning_rate, n_out, initModel=model)
   trainer.train()
 
 

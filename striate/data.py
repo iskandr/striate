@@ -1,22 +1,33 @@
 from PIL import Image
+from multiprocessing import Process, Queue, Manager
+from pycuda import driver
 from striate import util
-from striate.util import *
+from striate.util import printMatrix
 import cPickle
 import cStringIO as c
-import logging
 import numpy as np
 import os
 import random
 import re
 import synids
-import threading
 import time
 import zipfile
+import multiprocessing
 
 def load(filename):
   with open(filename, 'rb') as f:
     d = cPickle.load(f)
   return d
+
+
+class SharedArray(object):
+  def __init__(self, nparray):
+    self.data = multiprocessing.RawArray('f', np.prod(nparray.shape))
+    self.shape = nparray.shape
+    self.dtype = nparray.dtype
+
+  def to_numpy(self):
+    return np.frombuffer(self.data, self.dtype).reshape(self.shape).copy()
 
 
 class DataProvider(object):
@@ -86,25 +97,34 @@ class DataProvider(object):
 class ParallelDataProvider(DataProvider):
   def __init__(self, data_dir='.', batch_range=None):
     DataProvider.__init__(self, data_dir, batch_range)
-    self._thread = None
+    self._reader = None
     self._batch_return = None
+    self._data_queue = Queue(1)
 
   def _start_read(self):
-    assert self._thread is None or not self._thread.is_alive()
-    self._thread = threading.Thread(target=self.run_in_back)
-    self._thread.start()
+    # assert self._thread is None or not self._thread.is_alive()
+    # self._reader = threading.Thread(target=self.run_in_back)
+    # self._reader.setDaemon(True)
+    # self._reader.start()
+    assert self._reader is None or not self._reader.is_alive()
+    self._reader = Process(target=self.run_in_back)
+    self._reader.daemon = 1
+    self._reader.start()
 
   def run_in_back(self):
-    self._batch_return = self._get_next_batch()
+    while 1:
+      result = self._get_next_batch()
+      self._data_queue.put(result)
 
   def get_next_batch(self):
-    if self._thread is None:
+    if self._reader is None:
       self._start_read()
 
-    self._thread.join()
-    result = self._batch_return
-    self._start_read()
-    return result
+    epoch, batchnum, data = self._data_queue.get()
+    # data['data'] = data['data'].to_numpy()
+    # data['labels'] = data['labels'].to_numpy()
+
+    return epoch, batchnum, data
 
 
 class ImageNetDataProvider(ParallelDataProvider):
@@ -167,8 +187,6 @@ class ImageNetDataProvider(ParallelDataProvider):
     filenum = batchnum / ImageNetDataProvider.BATCHES_PER_FILE
     batch_offset = batchnum % ImageNetDataProvider.BATCHES_PER_FILE
 
-    util.log('%s: loading from %s' % (id(self), filenum))
-
     zf = zipfile.ZipFile(self.data_dir + '/part-%05d' % filenum)
 
     names = zf.namelist()
@@ -178,12 +196,14 @@ class ImageNetDataProvider(ParallelDataProvider):
     num_imgs = len(names)
 
     labels = np.zeros((1, num_imgs))
+
     cropped = np.ndarray((self.get_data_dims(), num_imgs * self.data_mult), dtype=np.uint8)
 
     # load in parallel for training
     st = time.time()
     images = []
     for idx, filename in enumerate(names):
+      # util.log('Here... %d', idx)
       jpeg = Image.open(c.StringIO(zf.read(filename)))
       if jpeg.mode != "RGB": jpeg = jpeg.convert("RGB")
       # starts as rows * cols * rgb, tranpose to rgb * rows * cols
@@ -203,18 +223,19 @@ class ImageNetDataProvider(ParallelDataProvider):
     st = time.time()
     cropped = cropped.astype(np.single)
     cropped = np.require(cropped, dtype=np.single, requirements='C')
-
     cropped -= self.data_mean
+
     align_time = time.time() - st
 
     labels = np.array(labels)
     labels = labels.reshape(cropped.shape[1],)
     labels = np.require(labels, dtype=np.single, requirements='C')
 
-    logging.info("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
-                 num_imgs, time.time() - start, load_time, align_time)
-    self.data = {'data':cropped, 'labels':labels}
-    return epoch, batchnum, self.data
+    util.log("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
+             num_imgs, time.time() - start, load_time, align_time)
+    # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
+
+    return epoch, batchnum, { 'data' : cropped, 'labels' : labels }
 
   # Returns the dimensionality of the two data matrices returned by get_next_batch
   # idx is the index of the matrix.
