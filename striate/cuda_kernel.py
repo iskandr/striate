@@ -1,18 +1,20 @@
-import numpy as np
-import sys
+import init_cuda
+
+from pycuda import gpuarray
+from pycuda.compiler import SourceModule
+from pycuda.elementwise import ElementwiseKernel
+from pycuda.gpuarray import GPUArray
+from scikits.cuda import cublas
 from time import time
 from util import *
-import pycuda
-#import pycuda.autoinit
-from pycuda import gpuarray
-from pycuda.gpuarray import GPUArray
-from pycuda.elementwise import ElementwiseKernel
-from pycuda.compiler import SourceModule
 import cPickle
-from scikits.cuda import cublas
 import cudaconv2
-#from scikits.cuda import linalg
-#linalg.init()
+import numpy as np
+import pycuda
+import sys
+# import pycuda.autoinit
+# from scikits.cuda import linalg
+# linalg.init()
 
 try:
   cublas.cublasInit()
@@ -24,7 +26,7 @@ except AttributeError:
 
 class CompiledSource(object):
   def __init__(self, src, kernel):
-    print >>sys.stderr, 'Compiling...', kernel
+    print >> sys.stderr, 'Compiling...', kernel
     self.module = SourceModule(src)
     self.kernel = self.module.get_function(kernel)
 
@@ -520,7 +522,7 @@ _gpu_partial_copy_to_ = CompiledSource('''
       dest[didx] = src[sidx];
     }''', 'gpu_partial_copy_to')
 
-_bigger_than_scaler_ = CompiledSource( '''
+_bigger_than_scaler_ = CompiledSource('''
     __global__
     void bigger_than_scaler(float* src, float* dest, float scaler, int rows, int cols, int leading)
     {
@@ -548,10 +550,10 @@ def row_max_reduce(x, mat):
 
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
 
-  grid = (1,mh)
-  block = (mw, 1,  1)
-  leading = mat.strides[0]/4
-  _row_max_reduce_(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  grid = (1, mh)
+  block = (mw, 1, 1)
+  leading = mat.strides[0] / 4
+  _row_max_reduce_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end("row_max_reduce")
 
 
@@ -567,9 +569,9 @@ def col_max_reduce(x, mat):
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
   grid = (mw, 1)
-  block = (1, mh,   1)
-  leading = mat.strides[0]/4
-  _col_max_reduce_(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  block = (1, mh, 1)
+  leading = mat.strides[0] / 4
+  _col_max_reduce_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('col_max_reduce')
 
 
@@ -585,9 +587,9 @@ def find_row_max_id(x, mat):
   assert(vw == 1 and vh == mh or vh == 1 and vw == mh)
 
   grid = (1, mh)
-  block = (mw, 1,  1)
-  leading = mat.strides[0]/4
-  _find_row_max_id_(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  block = (mw, 1, 1)
+  leading = mat.strides[0] / 4
+  _find_row_max_id_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('find_row_max_id')
 
 
@@ -604,14 +606,14 @@ def find_col_max_id(x, mat):
 
   grid = (mw, 1)
   block = (1, mh, 1)
-  leading = mat.strides[0]/4
+  leading = mat.strides[0] / 4
 
-  _find_col_max_id_(mat, x, I(leading), I(mh), I(mw), block = block, grid= grid)
+  _find_col_max_id_(mat, x, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('find_col_max_id')
 
 
 
-def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
+def add_vec_to_rows(mat, vec, dest=None, alpha=1.0, beta=1.0):
   '''
   Add the element in vec to every element in mat in corresponding rows
   The function behaves exactly like mat + vec in numpy
@@ -626,11 +628,11 @@ def add_vec_to_rows(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
     dest = mat
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = mat.strides[0]/4
-  _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
+  leading = mat.strides[0] / 4
+  _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_vec_to_rows')
 
-def add_vec_to_cols(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
+def add_vec_to_cols(mat, vec, dest=None, alpha=1.0, beta=1.0):
   '''
   Add the element in vec to every element in mat in corresponding cols
   The function behaves exactly like mat + vec in numpy
@@ -646,11 +648,11 @@ def add_vec_to_cols(mat, vec, dest = None,  alpha = 1.0, beta = 1.0):
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
   leading = mat.strides[0] / 4
-  _add_vec_to_cols_(F(alpha), vec,  F(beta), mat, dest, I(leading), I(mh), I(mw),  block = block, grid = grid)
+  _add_vec_to_cols_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_vec_to_cols')
 
 
-def div_vec_to_rows(mat, vec, dest = None):
+def div_vec_to_rows(mat, vec, dest=None):
   '''
   Divide the element in corresponding row of matrix by the element in the vec
   '''
@@ -662,13 +664,13 @@ def div_vec_to_rows(mat, vec, dest = None):
     dest = mat
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = mat.strides[0] /4
-  _div_vec_to_rows_( vec,  mat, dest, I(leading),I(mh), I(mw), block = block, grid = grid)
+  leading = mat.strides[0] / 4
+  _div_vec_to_rows_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('div_vec_to_rows')
 
 
 
-def div_vec_to_cols(mat, vec, dest = None):
+def div_vec_to_cols(mat, vec, dest=None):
   '''
   Divide the element in corresponding column of matrix by the element in the vec
   '''
@@ -680,13 +682,13 @@ def div_vec_to_cols(mat, vec, dest = None):
     dest = mat
   block = (32, 32, 1)
   grid = (ceil(mw , 32), ceil(mh, 32))
-  leading = mat.strides[0] /4
-  _div_vec_to_cols_(vec, mat, dest, I(leading), I(mh), I(mw), block = block, grid = grid)
+  leading = mat.strides[0] / 4
+  _div_vec_to_cols_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('div_vec_to_cols')
 
 
 
-def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
+def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   '''
   This function would sum up the element int a matrix row and store the result to
   the corresponding position of the vec
@@ -701,12 +703,12 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
     cudaconv2.sum(mat, 1, vec)
   else:
     gpu_partial_copy_to(mat, vec, 0, mh, 0, 1)
-  #if mat.shape[1] <= INTERNAL_SIZE:
+  # if mat.shape[1] <= INTERNAL_SIZE:
   #  grid = (1, mh)
   #  block = (mw, 1,  1)
   #  leading = mat.strides[0] /4
   #  _add_row_sum_to_vec_(mat, F(alpha), vec, F(beta),I(leading), I(mh), I(mw), block = block, grid= grid)
-  #else:
+  # else:
   #  block = (INTERNAL_SIZE, 1, 1)
   #  grid = (ceil(mw, INTERNAL_SIZE), mh)
   #  #tmp  = gpuarray.to_gpu(np.zeros((mh, ceil(mw, INTERNAL_SIZE)) ).astype(np.float32))
@@ -719,7 +721,7 @@ def add_row_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   timer.end('add_row_sum_to_vec')
 
 
-def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
+def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   '''
   This function would sum up the element int a matrix column and store the result to
   the corresponding position of the vec
@@ -735,7 +737,7 @@ def add_col_sum_to_vec(vec, mat, alpha = 1.0, beta = 1.0):
   grid = (mw, 1)
   block = (1, mh, 1)
   leading = mat.strides[0] / 4
-  _add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block = block, grid= grid)
+  _add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_col_sum_to_vec')
 
 
@@ -747,9 +749,9 @@ def same_reduce(target, vec):
   block = (target.size, 1, 1)
   grid = (1, 1)
   tmp = gpuarray.zeros_like(target);
-  _same_reduce_(target, vec, tmp, block = block, grid = grid)
+  _same_reduce_(target, vec, tmp, block=block, grid=grid)
   tmp.shape = (1, tmp.size)
-  res = gpuarray.to_gpu(np.zeros((1,1)).astype(np.float32))
+  res = gpuarray.to_gpu(np.zeros((1, 1)).astype(np.float32))
   add_row_sum_to_vec(res, tmp)
   timer.end('same_reduce')
   return int(res.get()[0, 0])
@@ -762,7 +764,7 @@ def logreg_cost_row_reduce(mat, label, cost):
 
   block = (mh, 1, 1)
   grid = (1, 1)
-  _logreg_cost_row_reduce_(mat, label, cost, np.int32(mat.strides[0]/4), block = block, grid = grid)
+  _logreg_cost_row_reduce_(mat, label, cost, np.int32(mat.strides[0] / 4), block=block, grid=grid)
   timer.end('logreg_cost_to_row_reduce')
 
 
@@ -772,9 +774,9 @@ def logreg_cost_col_reduce(mat, label, cost):
   vh, vw = label.shape
   assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
 
-  block = (mw,1,1)
+  block = (mw, 1, 1)
   grid = (1, 1)
-  _logreg_cost_col_reduce_(mat, label, cost, np.int32(mat.strides[0]/4), block = block, grid = grid)
+  _logreg_cost_col_reduce_(mat, label, cost, np.int32(mat.strides[0] / 4), block=block, grid=grid)
   timer.end('logreg_cost_to_col_reduce')
 
 
@@ -784,21 +786,21 @@ def softmax_bprop(mat, label, grad):
   mh, mw = mat.shape
   vh, vw = label.shape
 
-  assert(vh == 1 and vw == mw or vw == 1 and vh  == mw)
+  assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
 
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  _softmax_bprop_(mat, label, grad, I(mat.strides[0]/4), I(mh), I(mw), block = block, grid = grid)
+  _softmax_bprop_(mat, label, grad, I(mat.strides[0] / 4), I(mh), I(mw), block=block, grid=grid)
   timer.end('softmax_bprop')
 
 def relu_activate(input, output, e):
   timer.start()
   mh, mw = input.shape
 
-  block = (32,32,1)
+  block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = input.strides[0]/4
-  _relu_activate_(input, output, F(e), I(leading), I(mh), I(mw), block = block , grid = grid)
+  leading = input.strides[0] / 4
+  _relu_activate_(input, output, F(e), I(leading), I(mh), I(mw), block=block , grid=grid)
   timer.end('relu_activate')
 
 
@@ -809,7 +811,7 @@ def relu_compute_grad(grad, output, outGrad, e):
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
   leading = grad.strides[0] / 4
-  _relu_compute_grad_(grad, output, outGrad, F(e), I(leading), I(mh), I(mw), block = block, grid =
+  _relu_compute_grad_(grad, output, outGrad, F(e), I(leading), I(mh), I(mw), block=block, grid=
       grid)
   timer.end('relu_compute_grad')
 
@@ -817,11 +819,11 @@ def tanh_activate(input, output, a, b):
   timer.start()
   mh, mw = input.shape
 
-  block = (32,32,1)
+  block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = input.strides[0]/4
+  leading = input.strides[0] / 4
   _n2b = -2.0 * b
-  _tanh_activate_(input, output, F(a), F(_n2b), I(leading), I(mh), I(mw), block = block , grid = grid)
+  _tanh_activate_(input, output, F(a), F(_n2b), I(leading), I(mh), I(mw), block=block , grid=grid)
   timer.end('tanh_activate')
 
 
@@ -829,11 +831,11 @@ def tanh_compute_grad(grad, output, outGrad, a, b):
   timer.start()
   mh, mw = output.shape
 
-  block = (32,32,1)
+  block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  leading = output.strides[0]/4
-  _n4ab = -4.0 * a *b
-  _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block = block , grid = grid)
+  leading = output.strides[0] / 4
+  _n4ab = -4.0 * a * b
+  _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block=block , grid=grid)
   timer.end('tanh_compute_grad')
 
 
@@ -854,11 +856,11 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
 
   block = (32, 32, 1)
   grid = (ceil(c, 32), ceil(r, 32))
-  sleading, dleading = x.strides[0]/4, y.strides[0]/4
-  _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block = block, grid = grid)
+  sleading, dleading = x.strides[0] / 4, y.strides[0] / 4
+  _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
   timer.end('gpu_partial_copy_to')
 
-def dot(x,y):
+def dot(x, y):
   timer.start()
   if isinstance(x, GPUArray):
     assert isinstance(y, GPUArray)
@@ -871,7 +873,7 @@ def dot(x,y):
       x *= scalar(y)
       return x.ravel()
     elif len(x.shape) == 1 and len(y.shape) == 1:
-      return scalar(pycuda.gpuarray.dot(x,y))
+      return scalar(pycuda.gpuarray.dot(x, y))
     else:
       needs_ravel = False
       if len(x.shape) == 1:
@@ -881,7 +883,7 @@ def dot(x,y):
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
 
-      #result = linalg.dot(x, y)
+      # result = linalg.dot(x, y)
       result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
       sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
             x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
@@ -894,23 +896,23 @@ def dot(x,y):
       timer.end('dot')
       return result
   else:
-    return np.dot(x,y)
+    return np.dot(x, y)
 
 def transpose(mat):
   timer.start()
   mh, mw = mat.shape
-  dst = gpuarray.empty((mw, mh), dtype = np.float32)
+  dst = gpuarray.empty((mw, mh), dtype=np.float32)
 
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
-  sleading = mat.strides[0]/4
-  dleading = dst.strides[0]/4
-  _transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block = block, grid = grid)
+  sleading = mat.strides[0] / 4
+  dleading = dst.strides[0] / 4
+  _transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block=block, grid=grid)
 
   timer.end('transpose')
   return dst
 
-def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
+def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
   sh, sw = src.shape
   vh, vw = v.shape
 
@@ -921,11 +923,11 @@ def matrix_add(src, v, dest = None, alpha = 1.0, beta = 1.0):
   leading = src.strides[0] / 4
   if dest is None:
     dest = src
-  _matrix_add_(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), block = block , grid =
+  _matrix_add_(src, v, dest, F(alpha), F(beta), I(leading), I(sh), I(sw), block=block , grid=
       grid)
 
 
-def bigger_than_scaler(src, scaler, dest = None):
+def bigger_than_scaler(src, scaler, dest=None):
   if dest is not None:
     assert dest.shape == src.shape
   else:
@@ -936,4 +938,4 @@ def bigger_than_scaler(src, scaler, dest = None):
   block = (32, 32, 1)
   grid = (ceil(mw, 32), ceil(mh, 32))
   leading = src.strides[0] / 4
-  _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block= block , grid = grid)
+  _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block=block , grid=grid)

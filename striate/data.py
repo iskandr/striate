@@ -1,16 +1,17 @@
-import os
+from PIL import Image
+from striate import util
+from striate.util import *
 import cPickle
-import numpy as np
-import re
+import cStringIO as c
 import logging
+import numpy as np
+import os
 import random
+import re
+import synids
 import threading
 import time
 import zipfile
-from PIL import Image
-import cStringIO as c
-import synids
-from util import *
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -20,7 +21,7 @@ def load(filename):
 
 class DataProvider(object):
   BATCH_REGEX = re.compile('^data_batch_(\d+)$')
-  def __init__(self, data_dir='.', batch_range = None):
+  def __init__(self, data_dir='.', batch_range=None):
     self.data_dir = data_dir
     self.meta_file = os.path.join(data_dir, 'batches.meta')
 
@@ -41,13 +42,13 @@ class DataProvider(object):
 
 
   def get_next_index(self):
-    self.curr_batch_index = (self.curr_batch_index + 1 ) % len(self.batch_range)
+    self.curr_batch_index = (self.curr_batch_index + 1) % len(self.batch_range)
     return self.curr_batch_index
 
 
   @staticmethod
   def get_batch_filenames(src_dir):
-    return sorted([f for f in os.listdir(src_dir) if DataProvider.BATCH_REGEX.match(f)], key =
+    return sorted([f for f in os.listdir(src_dir) if DataProvider.BATCH_REGEX.match(f)], key=
         alphanum_key)
 
   @staticmethod
@@ -56,17 +57,20 @@ class DataProvider(object):
     return sorted(list(set(int(DataProvider.BATCH_REGEX.match(n).group(1)) for n in names)))
 
   def get_next_batch(self):
+    return self._get_next_batch()
+
+  def _get_next_batch(self):
     self.get_next_index()
     if self.curr_batch_index == 0:
       random.shuffle(self.batch_range)
       self.curr_epoch += 1
     self.curr_batch = self.batch_range[self.curr_batch_index]
-    #print self.batch_range, self.curr_batch
+    # print self.batch_range, self.curr_batch
 
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
     self.data = load(filename)
-    self.data['data'] = self.data['data']-self.batch_meta['data_mean']
+    self.data['data'] = self.data['data'] - self.batch_meta['data_mean']
     self.data['labels'] = np.array(self.data['labels'])
     return  self.curr_epoch, self.curr_batch, self.data
 
@@ -75,53 +79,56 @@ class DataProvider(object):
     self.batch_range.remove(batch)
     print self.batch_range
 
-
-
   def get_batch_num(self):
     return len(self.batch_range)
 
+
 class ParallelDataProvider(DataProvider):
-  def __init__(self,  data_dir='.', batch_range = None):
-    DataProvider.__init__(self,  data_dir, batch_range)
-    self.batch_return = None
+  def __init__(self, data_dir='.', batch_range=None):
+    DataProvider.__init__(self, data_dir, batch_range)
+    self._thread = None
+    self._start_read()
+    self._batch_return = None
+
+  def _start_read(self):
+    assert self._thread is None or not self._thread.is_alive()
+    self._thread = threading.Thread(target=self.run_in_back)
+    self._thread.start()
 
   def run_in_back(self):
-    self.batch_return = DataProvider.get_next_batch(self)
+    self._batch_return = self._get_next_batch()
 
   def get_next_batch(self):
-    self.thread = threading.Thread(target=self.run_in_back)
-    self.thread.start()
-
-  def wait(self):
-    self.thread.join()
-    return  self.batch_return
+    self._thread.join()
+    result = self._batch_return
+    self._start_read()
+    return result
 
 
-
-class ImageNetDataProvider(DataProvider):
+class ImageNetDataProvider(ParallelDataProvider):
   BATCHES_PER_FILE = 1
-  def __init__(self, data_dir, batch_range = None):
-    DataProvider.__init__(self, data_dir, batch_range)
+  def __init__(self, data_dir, batch_range=None):
+    ParallelDataProvider.__init__(self, data_dir, batch_range)
     self.img_size = 256
     self.border_size = 16
     self.inner_size = 224
-    #self.multiview = dp_params['multiview_test'] and test
+    # self.multiview = dp_params['multiview_test'] and test
     self.multiview = 0
-    self.num_views = 5*2
+    self.num_views = 5 * 2
     self.data_mult = self.num_views if self.multiview else 1
 
     self.buffer_idx = 0
 
-    imagemean= cPickle.loads(open(data_dir + "image-mean.pickle").read())
+    imagemean = cPickle.loads(open(data_dir + "image-mean.pickle").read())
     self.data_mean = (imagemean['data']
         .astype(np.single)
         .T
-        .reshape((3, 256, 256))[:, self.border_size:self.border_size+self.inner_size,self.border_size:self.border_size+self.inner_size]
+        .reshape((3, 256, 256))[:, self.border_size:self.border_size + self.inner_size, self.border_size:self.border_size + self.inner_size]
         .reshape((self.get_data_dims(), 1)))
 
   def __trim_borders(self, images, target):
     num_images = len(images)
-    #if self.test: # don't need to loop over cases
+    # if self.test: # don't need to loop over cases
     #  if self.multiview:
     #    start_positions = [(0,0),  (0, self.border_size*2),
     #        (self.border_size, self.border_size),
@@ -136,7 +143,7 @@ class ImageNetDataProvider(DataProvider):
     #    for idx, img in enumerate(images):
     #      pic = img[:, self.border_size:self.border_size+self.inner_size,self.border_size:self.border_size+self.inner_size]
     #      target[:, idx] = pic.reshape((self.get_data_dims(),))
-    #else:
+    # else:
     for idx, img in enumerate(images):
       startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
       endY, endX = startY + self.inner_size, startX + self.inner_size
@@ -145,7 +152,7 @@ class ImageNetDataProvider(DataProvider):
         pic = pic[:, :, ::-1]
       target[:, idx] = pic.reshape((self.get_data_dims(),))
 
-  def get_next_batch(self):
+  def _get_next_batch(self):
     start = time.time()
     self.get_next_index()
     if self.curr_batch_index == 0:
@@ -158,7 +165,8 @@ class ImageNetDataProvider(DataProvider):
     filenum = batchnum / ImageNetDataProvider.BATCHES_PER_FILE
     batch_offset = batchnum % ImageNetDataProvider.BATCHES_PER_FILE
 
-    print 'Loading from %s' % filenum
+    util.log('%s: loading from %s' % (id(self), filenum))
+
     zf = zipfile.ZipFile(self.data_dir + '/part-%05d' % filenum)
 
     names = zf.namelist()
@@ -198,7 +206,7 @@ class ImageNetDataProvider(DataProvider):
     align_time = time.time() - st
 
     labels = np.array(labels)
-    labels = labels.reshape(cropped.shape[1], )
+    labels = labels.reshape(cropped.shape[1],)
     labels = np.require(labels, dtype=np.single, requirements='C')
 
     logging.info("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
@@ -209,21 +217,21 @@ class ImageNetDataProvider(DataProvider):
   # Returns the dimensionality of the two data matrices returned by get_next_batch
   # idx is the index of the matrix.
   def get_data_dims(self, idx=0):
-    return self.inner_size**2 * 3 if idx == 0 else 1
+    return self.inner_size ** 2 * 3 if idx == 0 else 1
 
   def get_plottable_data(self, data):
     return np.require(
        (data + self.data_mean).T
        .reshape(data.shape[1], 3, self.inner_size, self.inner_size)
-       .swapaxes(1,3)
-       .swapaxes(1,2) / 255.0,
+       .swapaxes(1, 3)
+       .swapaxes(1, 2) / 255.0,
         dtype=np.single)
 
 if __name__ == "__main__":
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'
   dp = ImageNetDataProvider(data_dir, [1])
-  #data_dir = '/hdfs/cifar/data/cifar-10-python/'
-  #dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
+  # data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
   for i in range(1):
     epoch, batch, data = dp.get_next_batch()
     printMatrix(data['data'], 'data')

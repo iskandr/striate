@@ -1,6 +1,27 @@
-import time
-import cPickle
 from pycuda.gpuarray import GPUArray
+import cPickle
+import os
+import sys
+import threading
+import time
+import traceback
+
+program_start = time.time()
+log_mutex = threading.Lock()
+def log(msg, *args, **kw):
+  with log_mutex:
+    caller = sys._getframe(1)
+    filename = caller.f_code.co_filename
+    lineno = caller.f_lineno
+    now = time.time() - program_start
+    if 'exc_info' in kw:
+      exc = ''.join(traceback.format_exc())
+    else:
+      exc = None
+    print >> sys.stderr, '%s:%s:%d: %s' % (now, os.path.basename(filename), lineno, msg % args)
+    if exc:
+      print >> sys.stderr, exc
+
 
 class Timer:
   def __init__(self):
@@ -54,9 +75,9 @@ def string_to_int_list(str):
   str = str.strip()
   if str.find('-'):
     f = int(str[0:str.find('-')])
-    t  = int(str[str.find('-') + 1:-1])
+    t = int(str[str.find('-') + 1:-1])
 
-    return range(f, t +1)
+    return range(f, t + 1)
   else:
     elt = int(str)
     return [elt]
