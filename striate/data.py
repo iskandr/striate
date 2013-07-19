@@ -12,6 +12,9 @@ import synids
 import time
 import zipfile
 import multiprocessing
+import sys
+
+
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -28,6 +31,8 @@ class SharedArray(object):
   def to_numpy(self):
     return np.frombuffer(self.data, self.dtype).reshape(self.shape).copy()
 
+
+dp_dict = {}
 
 class DataProvider(object):
   BATCH_REGEX = re.compile('^data_batch_(\d+)$')
@@ -92,6 +97,20 @@ class DataProvider(object):
   def get_batch_num(self):
     return len(self.batch_range)
 
+  @classmethod
+  def register_data_provider(cls, name, _class):
+    if name in dp_dict:
+      print 'Data Provider', name, 'already registered'
+    else:
+      dp_dict[name] = _class
+
+  @classmethod
+  def get_instance(cls, name, data_dir, batch_range):
+    if name not in dp_dict:
+      print >> sys.stderr, 'There is no such data provider --', name, '--'
+      sys.exit(-1)
+    else:
+      return dp_dict[name](data_dir, batch_range)
 
 class ParallelDataProvider(DataProvider):
   def __init__(self, data_dir='.', batch_range=None):
@@ -250,6 +269,11 @@ class ImageNetDataProvider(ParallelDataProvider):
        .swapaxes(1, 3)
        .swapaxes(1, 2) / 255.0,
         dtype=np.single)
+
+
+DataProvider.register_data_provider('cifar10', DataProvider)
+DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
+
 
 if __name__ == "__main__":
   data_dir = '/hdfs/imagenet/batches/imagesize-256/'

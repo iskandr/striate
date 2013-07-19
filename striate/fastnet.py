@@ -171,7 +171,7 @@ class FastNet(object):
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
 #    util.log('Allocating %s bytes', np.prod(self.inputShapes[-2]) * 4)
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-    print 'append layer', layer.name, 'to network'
+    print 'append a', layer.type, 'layer', layer.name, 'to network'
     print 'the output of the layer is', outputShape
 
   def del_layer(self):
@@ -343,6 +343,13 @@ class FastNet(object):
   def get_report(self):
     pass
 
+
+  def get_summary(self):
+    sum = []
+    for l in self.layers:
+      if isinstance(l, WeightedLayer):
+        sum.append(l.get_summary())
+    return sum
 
 
 class AdaptiveFastNet(FastNet):

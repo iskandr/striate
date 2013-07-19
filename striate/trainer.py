@@ -18,9 +18,10 @@ import time
 
 class Trainer:
   CHECKPOINT_REGEX = None
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
     self.test_id = test_id
     self.data_dir = data_dir
+    self.data_provider = data_provider
     self.checkpoint_dir = checkpoint_dir
     self.train_range = train_range
     self.test_range = test_range
@@ -51,13 +52,9 @@ class Trainer:
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
 
-  # def init_data_provider(self):
-  #  self.train_dp = DataProvider(self.data_dir, self.train_range)
-  #  self.test_dp = DataProvider(self.data_dir, self.test_range)
-
   def init_data_provider(self):
-    self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
-    self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
+    self.train_dp = DataProvider.get_instance(self.data_provider, self.data_dir, self.train_range)
+    self.test_dp = DataProvider.get_instance(self.data_provider, self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train=TRAIN):
@@ -98,6 +95,9 @@ class Trainer:
     model['batchnum'] = self.train_dp.get_batch_num()
     model['epoch'] = self.num_epoch + 1
     model['layers'] = self.net.get_dumped_layers()
+
+    #for param in model['layers']:
+    #  print param.keys()
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
 
@@ -122,8 +122,14 @@ class Trainer:
       self.net.train_batch(input, label, TEST)
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
-    print 'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() -
-      start)
+    print 'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() - start)
+    print '--------------------------------------------------------------'
+    for s in self.net.get_summary():
+      name = s[0]
+      values = s[1]
+      print "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
+      print "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
+
 
   def check_continue_trainning(self):
     return self.curr_epoch <= self.num_epoch
@@ -172,8 +178,8 @@ class Trainer:
 
       wait_time = time.time()
       self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()  # #self.train_dp.wait()
-      print 'waitting', time.time() - wait_time, 'secs to load'
-      print 'time to train a batch file is', time.time() - start
+      #print 'waitting', time.time() - wait_time, 'secs to load'
+      #print 'time to train a batch file is', time.time() - start
 
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
@@ -188,10 +194,10 @@ class Trainer:
 
 
 class AutoStopTrainer(Trainer):
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
       auto_init=True, initModel=None, auto_stop_alg='smooth'):
-    Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+    Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, auto_init,
         initModel=initModel)
 
@@ -206,10 +212,10 @@ class AutoStopTrainer(Trainer):
 
 
 class AdaptiveLearningRateTrainer(Trainer):
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, initModel=
       None, adjust_freq=10, factor=[1.0]):
-    Trainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+    Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
 =adjust_freq, initModel=initModel, factor=factor, autoInit=False)
     _, batch, self.train_data = self.train_dp.get_next_batch()
@@ -248,10 +254,10 @@ class AdaptiveLearningRateTrainer(Trainer):
 
 
 class LayerwisedTrainer(AutoStopTrainer):
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_filters,
       size_filters, fc_nouts):
-    AutoStopTrainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+    AutoStopTrainer.__init__(self, test_id, data_dir,provider,  checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, 0, False)
     if len(n_filters) == 1:
       self.layerwised = False
@@ -291,13 +297,13 @@ class LayerwisedTrainer(AutoStopTrainer):
 
 
 class ImageNetLayerwisedTrainer(AutoStopTrainer):
-  def __init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, params):
 
     self.origin_test_range = test_range
     if len(test_range) != 1:
       test_range = [test_range[0]]
-    AutoStopTrainer.__init__(self, test_id, data_dir, checkpoint_dir, train_range, test_range, test_freq,
+    AutoStopTrainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, False)
 
     self.conv_params = []
@@ -397,26 +403,33 @@ if __name__ == '__main__':
   description = 'first try with momentum'
 
   # parameters for imagenet
-  data_dir = '/ssd/nn-data/imagenet/imagesize-256/'
-  param_file = 'striate/imagenet.cfg'
-  # param_file = './single.cfg'
+  #data_dir = '/ssd/nn-data/imagenet/imagesize-256/'
+  #param_file = 'striate/imagenet.cfg'
+  #data_provider = 'imagenet'
+  #train_range = range(1, 600)
+  #test_range = range(600, 650)
+  #save_freq = test_freq = 1
+  #adjust_freq = 100
+  #image_size = 224
+  #n_out = 1000
 
-  print 'Using param file', param_file
-  train_range = range(1, 600)
-  test_range = range(600, 650)
-  save_freq = test_freq = 100
-  adjust_freq = 100
-  image_size = 224
-  n_out = 1000
+  data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  param_file = 'striate/cifar10.cfg'
+  train_range = range(1, 41)
+  test_range = range(41, 49)
+  data_provider = 'cifar10'
+  save_freq = test_freq = 20
+  adjust_freq = 1
+  image_size = 32
+  n_out = 10
 
-  # param_file = sys.argv[1]
-  checkpoint_dir = './checkpoint/'
+  checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
   num_epoch = 30
 
   image_color = 3
-  learning_rate = 0.1
+  learning_rate = 1.0
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
@@ -425,7 +438,7 @@ if __name__ == '__main__':
   # model = load('./checkpoint/test29-17.20')
   print model
 
-  trainer = Trainer(test_id, data_dir, checkpoint_dir, train_range,
+  trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
       test_range, test_freq, save_freq, batch_size, num_epoch,
       image_size, image_color, learning_rate, n_out, initModel=model)
   trainer.train()

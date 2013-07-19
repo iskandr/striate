@@ -62,8 +62,10 @@ class WeightedLayer(Layer):
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
     if bias is None:
-      self.bias = gpuarray.to_gpu(np.random.randn(*biasShape) *
-          self.initB).astype(np.float32)
+      if self.initB > 0.0:
+        self.bias = gpuarray.to_gpu(np.random.randn(*biasShape) * self.initB).astype(np.float32)
+      else:
+        self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
     self.weightGrad = gpuarray.zeros_like(self.weight)
@@ -76,7 +78,6 @@ class WeightedLayer(Layer):
 
   def update(self):
     if self.momW > 0.0:
-      print 'using mom'
       matrix_add(self.weightIncr, self.weightGrad, alpha=self.momW, beta=self.epsW / self.batchSize)
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
@@ -90,9 +91,32 @@ class WeightedLayer(Layer):
     else:
       matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
+
+    #if self.type == 'conv':
+    #  print self.name
+    #  a = self.bias.get()[:, 0][0:6]
+    #  for i in a:
+    #    print '%.15f' % i
+
   def scaleLearningRate(self, l):
     self.epsW *= l
     self.epsB *= l
+
+  def get_summary(self, type = 'mean'):
+    #w = util.abs_mean(self.weight)
+    #wi = 0.0 if not hasattr(self, 'weightIncr') else util.abs_mean(self.weightIncr)
+
+    #b = util.abs_mean(self.bias)
+    #bi = 0.0 if not hasattr(self, 'biasIncr') else util.abs_mean(self.biasIncr)
+    w = self.weight.get()
+    w = np.mean(np.abs(w))
+    wi = 0.0
+
+    b = self.bias.get()
+    b = np.mean(np.abs(b))
+    bi = 0.0
+    return self.name, (w, wi, b, bi)
+
 
   def dump(self):
     d = Layer.dump(self)
@@ -331,6 +355,8 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
   def dump(self):
     d = Layer.dump(self)
+    if 'denom' in d:
+      del d['denom']
     d['blocked'] = self.blocked
     return d
 

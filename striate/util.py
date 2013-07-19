@@ -1,10 +1,12 @@
 from pycuda.gpuarray import GPUArray
+from pycuda import gpuarray
 import cPickle
 import os
 import sys
 import threading
 import time
 import traceback
+import numpy as np
 
 program_start = time.time()
 log_mutex = threading.Lock()
@@ -92,3 +94,9 @@ def printMatrix(x, name):
 
   for i in a:
     print '%.15f ' % i
+
+def abs_mean(x):
+  if isinstance(x, GPUArray):
+    return (gpuarray.sum(x.__abs__()) / x.size).get().item()
+  if isinstance(x, np.ndarray):
+    return np.mean(np.abs(x))
