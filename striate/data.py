@@ -12,14 +12,9 @@ import synids
 import threading
 import time
 import zipfile
-<<<<<<< HEAD
 import multiprocessing
 import sys
-
-
-=======
 import Queue
->>>>>>> e60d47be1bc8cb2adafc5c87a6f9954d7df04fcd
 
 def load(filename):
   with open(filename, 'rb') as f:
