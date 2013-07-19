@@ -1,20 +1,25 @@
 from PIL import Image
-from multiprocessing import Process, Queue
 from striate import util
 from striate.util import printMatrix
 import cPickle
 import cStringIO as c
+import multiprocessing
 import numpy as np
 import os
 import random
 import re
 import synids
+import threading
 import time
 import zipfile
+<<<<<<< HEAD
 import multiprocessing
 import sys
 
 
+=======
+import Queue
+>>>>>>> e60d47be1bc8cb2adafc5c87a6f9954d7df04fcd
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -117,16 +122,15 @@ class ParallelDataProvider(DataProvider):
     DataProvider.__init__(self, data_dir, batch_range)
     self._reader = None
     self._batch_return = None
-    self._data_queue = Queue(1)
+    self._data_queue = Queue.Queue(1)
+    # self._data_queue = multiprocessing.Queue(1)
 
   def _start_read(self):
-    # assert self._thread is None or not self._thread.is_alive()
-    # self._reader = threading.Thread(target=self.run_in_back)
-    # self._reader.setDaemon(True)
-    # self._reader.start()
-    assert self._reader is None or not self._reader.is_alive()
-    self._reader = Process(target=self.run_in_back)
-    self._reader.daemon = 1
+    assert self._reader is None
+    self._reader = threading.Thread(target=self.run_in_back)
+    self._reader.setDaemon(True)
+    # self._reader = multiprocessing.Process(target=self.run_in_back)
+    # self._reader.daemon = 1
     self._reader.start()
 
   def run_in_back(self):
