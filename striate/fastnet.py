@@ -76,6 +76,7 @@ class FastNet(object):
       return ConvLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'pool':
+      ld['imgShape'] = self.imgShapes[-1]
       return MaxPoolLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'neuron':
@@ -91,11 +92,12 @@ class FastNet(object):
       return SoftmaxLayer.parseFromCUDACONVNET(ld)
 
     if ld['type'] == 'rnorm':
+      ld['imgShape'] = self.imgShapes[-1]
       return ResponseNormLayer.parseFromCUDACONVNET(ld)
 
   def append_layers_from_dict(self, layers):
     for l in layers:
-      layer = self.makeLayerFromFASTNET(l)
+      layer = self.makeLayerFromCUDACONVNET(l)
       if layer:
         self.append_layer(layer)
 
@@ -322,6 +324,7 @@ class FastNet(object):
     self.prepare_for_train(data, label)
     # printMatrix(data, 'data')
     self.fprop(self.data, self.output, train)
+    #printMatrix(self.output, 'output')
     cost, correct = self.get_cost(self.label, self.output)
     self.cost += cost
     self.correct += correct

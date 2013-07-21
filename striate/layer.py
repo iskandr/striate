@@ -42,7 +42,9 @@ class Layer(object):
         d[att] = getattr(self, att)
     return d
 
-
+def randn(shape, dtype):
+  np.random.seed(0)
+  return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias, weightShape, biasShape):
@@ -57,16 +59,18 @@ class WeightedLayer(Layer):
     self.wc = wc
 
     if weight is None:
-      self.weight = gpuarray.to_gpu(np.random.randn(*weightShape) * self.initW).astype(np.float32)
+      self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
+      print 'init weight from disk'
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
     if bias is None:
       if self.initB > 0.0:
-        self.bias = gpuarray.to_gpu(np.random.randn(*biasShape) * self.initB).astype(np.float32)
+        self.bias = gpuarray.to_gpu((np.ones(biasShape, dtype=np.float32) * self.initB))
       else:
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
+      print 'init bias from disk'
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
@@ -82,14 +86,16 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
+      self.weight += self.weightGrad * self.epsW / self.batchSize
+      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
 
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      self.bias += self.biasGrad * self.epsB / self.batchSize
+      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
 
     #if self.type == 'conv':
@@ -189,9 +195,9 @@ class ConvLayer(WeightedLayer):
     weight = ld['weights'][0]
 
     filter_shape = (numFilter, numColor, filterSize, filterSize)
-    img_shape = self.imgShapes[-1]
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias,
-        weight)
+    img_shape = ld['imgShape']
+    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias = bias,
+        weight = weight)
 
   def dump(self):
     d = WeightedLayer.dump(self)
@@ -331,6 +337,7 @@ class ResponseNormLayer(Layer):
 class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False):
     ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale)
+    self.type = 'cmrnorm'
     self.blocked = blocked
 
   @staticmethod
@@ -404,11 +411,11 @@ class FCLayer(WeightedLayer):
     initW = ld['initW'][0]
 
     n_out = ld['outputs']
-    bias = ld['biases']
+    bias = ld['biases'].transpose()
     weight = ld['weights'][0].transpose()
     name = ld['name']
     input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight, bias)
+    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight = weight, bias = bias)
 
 
   def dump(self):
@@ -431,13 +438,20 @@ class FCLayer(WeightedLayer):
 
   def fprop(self, input, output, train=TRAIN):
     gpu_copy_to(dot(self.weight, input), output)
+    #output.gpudata = (dot(self.weight, input)).gpudata
+    ob = output.get()
+    b = np.dot(self.weight.get(), input.get())
+    #output.set(b)
+    print ob - b
     add_vec_to_rows(output, self.bias)
-
+    
     if train == TEST:
       if self.dropRate > 0.0:
         output *= self.dropRate
     else:
       if self.dropRate > 0.0:
+        import sys
+        print >> sys.stderr, 'droprate is not 0'
         self.dropMask = gpuarray.to_gpu(np.random.rand(*output.shape).astype(np.float32))
         bigger_than_scaler(self.dropMask, self.dropRate)
         gpu_copy_to(output, output * self.dropMask)
@@ -494,6 +508,7 @@ class SoftmaxLayer(Layer):
     self.batchCorrect = same_reduce(label , maxid)
 
     logreg_cost_col_reduce(output, label, self.cost)
+    #printMatrix(self.cost, 'logreg')
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)
@@ -587,8 +602,8 @@ class NeuronLayer(Layer):
     if ld['neuron']['type'] == 'relu':
       img_shape = ld['imgShape']
       name = ld['name']
-      e = ld['neuron']['e']
-      return NeuronLayer(name, img_shape, type='relu', e=e)
+      #e = ld['neuron']['e']
+      return NeuronLayer(name, img_shape, type='relu')
     if ld['neuron']['type'] == 'tanh':
       name = ld['name']
       img_shape = ld['imgShape']

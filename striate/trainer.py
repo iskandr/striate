@@ -123,6 +123,9 @@ class Trainer:
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
     print 'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() - start)
+    self.print_net_summary()
+
+  def print_net_summary(self):
     print '--------------------------------------------------------------'
     for s in self.net.get_summary():
       name = s[0]
@@ -144,6 +147,7 @@ class Trainer:
     return self.num_batch % self.adjust_freq == 0
 
   def train(self):
+    self.print_net_summary() 
     util.log('Starting training...')
     self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
     while self.check_continue_trainning():
@@ -408,14 +412,14 @@ if __name__ == '__main__':
   #data_provider = 'imagenet'
   #train_range = range(1, 600)
   #test_range = range(600, 650)
-  #save_freq = test_freq = 1
+  #save_freq = test_freq = 100
   #adjust_freq = 100
   #image_size = 224
   #n_out = 1000
 
   data_dir = '/hdfs/cifar/data/cifar-10-python/'
   param_file = 'striate/cifar10.cfg'
-  train_range = range(1, 41)
+  train_range = range(1, 2)
   test_range = range(41, 49)
   data_provider = 'cifar10'
   save_freq = test_freq = 20
@@ -426,7 +430,7 @@ if __name__ == '__main__':
   checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
-  num_epoch = 30
+  num_epoch = 1
 
   image_color = 3
   learning_rate = 1.0
@@ -434,9 +438,10 @@ if __name__ == '__main__':
   size_filters = [5, 5]
   fc_nouts = [10]
 
-  model = Parser(param_file).get_result()
-  # model = load('./checkpoint/test29-17.20')
-  print model
+  #model = Parser(param_file).get_result()
+  #import pprint
+  #pprint.pprint(model)
+  model = util.load('./striate/stdmodel')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
       test_range, test_freq, save_freq, batch_size, num_epoch,

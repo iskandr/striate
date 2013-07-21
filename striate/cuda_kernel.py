@@ -12,9 +12,9 @@ import cudaconv2
 import numpy as np
 import pycuda
 import sys
-# import pycuda.autoinit
-# from scikits.cuda import linalg
-# linalg.init()
+import pycuda.autoinit
+#from scikits.cuda import linalg
+#linalg.init()
 
 try:
   cublas.cublasInit()
@@ -262,7 +262,7 @@ _div_vec_to_rows_ = CompiledSource('''
       int j = blockIdx.y * blockDim.y + threadIdx.y;
       int index = i + j*leading;
       if ( i < cols   &&  j < rows)
-        dst[index] = mat[index] / row[j];
+        dst[index] = __fdividef(mat[index], row[j]);
     }
     ''', 'div_vec_to_rows')
 
@@ -273,7 +273,7 @@ _div_vec_to_cols_ = CompiledSource('''
       int j = blockIdx.y * blockDim.y + threadIdx.y;
       int index = i + j*leading;
       if ( i < cols   &&  j < rows)
-        dst[index] = mat[index] / row[i];
+        dst[index] = __fdividef(mat[index], row[i]);
     }
     ''', 'div_vec_to_cols')
 
@@ -882,8 +882,7 @@ def dot(x, y):
       if len(y.shape) == 1:
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
-
-      # result = linalg.dot(x, y)
+      #result = linalg.dot(x, y)
       result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
       sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
             x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,

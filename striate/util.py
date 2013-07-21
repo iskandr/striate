@@ -85,15 +85,21 @@ def string_to_int_list(str):
     return [elt]
 
 
-def printMatrix(x, name):
+def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   print name
+  if row_to == 0:
+    row_to = 10
+  if col_to == 0:
+    col_to = 1
   if isinstance(x, GPUArray):
-    a = x.get()[:, 0]
+    a = x.get()[row_from: row_to , col_from: col_to]
   else:
-    a = x[:, 0]
+    a = x[row_from: row_to , col_from: col_to]
 
-  for i in a:
-    print '%.15f ' % i
+  for rows in a:
+    for i in rows:
+      print '%.15f ' % i, 
+    print
 
 def abs_mean(x):
   if isinstance(x, GPUArray):
