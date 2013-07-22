@@ -6,7 +6,7 @@ from striate.fastnet import FastNet, AdaptiveFastNet
 from striate.layer import TRAIN, TEST
 from striate.parser import Parser
 from striate.scheduler import Scheduler
-from striate.util import ceil, timer
+from striate.util import divup, timer
 import cPickle
 import numpy as np
 import os
@@ -18,7 +18,8 @@ import time
 
 class Trainer:
   CHECKPOINT_REGEX = None
-  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, 
+               image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.data_provider = data_provider
@@ -53,31 +54,19 @@ class Trainer:
     self.checkpoint_file = ''
 
   def init_data_provider(self):
-    self.train_dp = DataProvider.get_instance(self.data_provider, self.data_dir, self.train_range)
-    self.test_dp = DataProvider.get_instance(self.data_provider, self.data_dir, self.test_range)
+    self.train_dp = DataProvider.get_by_name(self.data_provider)(self.data_dir, self.train_range)
+    self.test_dp = DataProvider.get_by_name(self.data_provider)(self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train=TRAIN):
     if train == TRAIN:
-      num = self.num_train_minibatch
       data = self.train_data
     else:
-      num = self.num_test_minibatch
       data = self.test_data
 
-
-#    if not isinstance(data['data'], GPUArray):
-#      data['data'] = gpuarray.to_gpu(data['data']).astype(np.float32)
-#
-#    if not isinstance(data['labels'], GPUArray):
-#      data['labels'] = gpuarray.to_gpu(data['labels']).astype(np.float32)
-
-    batch_data = data['data']
-    batch_label = data['labels']
+    batch_data = data.data
+    batch_label = data.labels
     batch_size = self.batch_size
-
-
-    mh, mw = batch_data.shape
 
     mini_data = batch_data[:, i * batch_size: (i + 1) * batch_size]
     locked_data = driver.pagelocked_empty(mini_data.shape, mini_data.dtype, order='C',
@@ -85,7 +74,7 @@ class Trainer:
     locked_data[:] = mini_data
 
     input = gpuarray.to_gpu(locked_data)
-    label = batch_label[i * batch_size : (i + 1) * batch_size]
+    label = gpuarray.to_gpu(batch_label[i * batch_size : (i + 1) * batch_size])
 
     return input, label
 
@@ -116,7 +105,7 @@ class Trainer:
     start = time.time()
     _, _, self.test_data = self.test_dp.get_next_batch()
 
-    self.num_test_minibatch = ceil(self.test_data['data'].shape[1], self.batch_size)
+    self.num_test_minibatch = divup(self.test_data['data'].shape[1], self.batch_size)
     for i in range(self.num_test_minibatch):
       input, label = self.get_next_minibatch(i, TEST)
       self.net.train_batch(input, label, TEST)
@@ -149,10 +138,13 @@ class Trainer:
   def train(self):
     self.print_net_summary() 
     util.log('Starting training...')
-    self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
     while self.check_continue_trainning():
+      self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
+      self.curr_epoch = self.train_data.epoch
+      self.curr_batch = self.train_data.batchnum
+       
       start = time.time()
-      self.num_train_minibatch = ceil(self.train_data['data'].shape[1], self.batch_size)
+      self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
       t = 0
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
@@ -181,7 +173,7 @@ class Trainer:
         print '------------'
 
       wait_time = time.time()
-      self.curr_epoch, self.curr_batch, self.train_data = self.train_dp.get_next_batch()  # #self.train_dp.wait()
+
       #print 'waitting', time.time() - wait_time, 'secs to load'
       #print 'time to train a batch file is', time.time() - start
 
@@ -222,9 +214,11 @@ class AdaptiveLearningRateTrainer(Trainer):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
 =adjust_freq, initModel=initModel, factor=factor, autoInit=False)
-    _, batch, self.train_data = self.train_dp.get_next_batch()
-    # if self.train_data['data'].shape[1] > 1000:
-    #  train_data = (self.train_data['data'][:, :1000] , self.train_data['labels'][:1000])
+    self.train_data = self.train_dp.get_next_batch()
+    batch = self.train_data.batchnum
+    
+    # if self.train_data.data.shape[1] > 1000:
+    #  train_data = (self.train_data.data[:, :1000] , self.train_data.labels[:1000])
     # else:
     #  train_data = self.train_data
 
@@ -233,7 +227,7 @@ class AdaptiveLearningRateTrainer(Trainer):
 
     _, batch, self.test_data = self.test_dp.get_next_batch()
     # if self.test_data['data'].shape[1] > 1000:
-    #  test_data = (self.test_data['data'][:, :1000], self.train_data['labels'][:1000])
+    #  test_data = (self.test_data['data'][:, :1000], self.train_data.labels[:1000])
     # else:
     #  test_data = self.test_data
     test_data = self.get_next_minibatch(0, TEST)
@@ -400,32 +394,31 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 
 if __name__ == '__main__':
-
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75, 0.66]
   test_id = int(sys.argv[1])
   description = 'first try with momentum'
 
   # parameters for imagenet
-  #data_dir = '/ssd/nn-data/imagenet/imagesize-256/'
-  #param_file = 'striate/imagenet.cfg'
-  #data_provider = 'imagenet'
-  #train_range = range(1, 600)
-  #test_range = range(600, 650)
-  #save_freq = test_freq = 100
-  #adjust_freq = 100
-  #image_size = 224
-  #n_out = 1000
-
-  data_dir = '/hdfs/cifar/data/cifar-10-python/'
-  param_file = 'striate/cifar10.cfg'
-  train_range = range(1, 2)
-  test_range = range(41, 49)
-  data_provider = 'cifar10'
-  save_freq = test_freq = 20
-  adjust_freq = 1
-  image_size = 32
+  data_dir = '/ssd/nn-data/imagenet/'
+  param_file = 'striate/imagenet.cfg'
+  data_provider = 'imagenet'
+  train_range = range(1, 1200)
+  test_range = range(1200, 1300)
+  save_freq = test_freq = 100
+  adjust_freq = 100
+  image_size = 224
   n_out = 10
+
+#   data_dir = '/hdfs/cifar/data/cifar-10-python/'
+#   param_file = 'striate/cifar10.cfg'
+#   train_range = range(1, 2)
+#   test_range = range(41, 49)
+#   data_provider = 'cifar10'
+#   save_freq = test_freq = 20
+#   adjust_freq = 1
+#   image_size = 32
+#   n_out = 10
 
   checkpoint_dir = './striate/checkpoint/'
 
@@ -438,74 +431,12 @@ if __name__ == '__main__':
   size_filters = [5, 5]
   fc_nouts = [10]
 
-  #model = Parser(param_file).get_result()
+  model = Parser(param_file).get_result()
   #import pprint
   #pprint.pprint(model)
-  model = util.load('./striate/stdmodel')
+  #model = util.load('./striate/stdmodel')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-      test_range, test_freq, save_freq, batch_size, num_epoch,
-      image_size, image_color, learning_rate, n_out, initModel=model)
+                    test_range, test_freq, save_freq, batch_size, num_epoch,
+                    image_size, image_color, learning_rate, n_out, initModel=model)
   trainer.train()
-
-
-  '''
-
-  parser = argparse.ArgumentParser()
-  parser.add_argument('--des_file', help = 'The description file', default='./testdes')
-  parser.add_argument('--test_id', help = 'The test id, Need to be exclusive', type = int)
-  description = ''
-  parser.add_argument('--data_dir', help = 'The data directory')
-  parser.add_argument('--checkpoint', help = 'The checkpoint file directory',default='./checkpoint')
-
-  parser.add_argument('--train_range', help = 'The range of train file')
-  parser.add_argument('--test_range', help = 'The range of test file')
-  parser.add_argument('--data', help = 'The type of data', choices=['cifar', 'imagenet'])
-  parser.add_argument('--save_freq', help = 'The frequency to save checkpoint', default= 10, type = int)
-  parser.add_argument('--test_freq', help = 'The frequency to test model', default = 10, type = int)
-  parser.add_argument('--num_epoch', help = 'The number of epoch', default =30, type = int)
-  parser.add_argument('--adjust_freq', help = 'The frequency to adjust learning rate', default = 40, type = int)
-  parser.add_argument('--batch_size', help = 'Batch size', default = 128, type = int)
-  parser.add_argument('--n_output', help = 'The number of output', type = int, default = 10)
-  parser.add_argument('--param_file', help = 'The layer parameter file', default = None)
-  parser.add_argument('--type', help = 'Model type', default= 'normal', choices = ['normal',
-    'adpative', 'layerwised', 'autostop', 'imagenet'])
-
-  factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75,  0.66]
-  args = parser.parse_args()
-
-  image_color = 3
-  if args.data == 'cifar':
-    image_size = 32
-  else args.data == 'imagenet':
-    image_size = 224
-
-  args.train_range = string_to_int_list(args.train_range)
-  args.test_range = string_to_int_list(args.test_range)
-
-  n_filters = [64, 64]
-  size_filters = [5, 5]
-  fc_nouts = [10]
-
-  if args.type == 'normal':
-    trainer = Trainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
-        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
-        image_size, image_color, args.learning_rate, args.n_output)
-  elif args.type == 'adpative':
-    trainer = AdaptiveLearningRateTrainer(args.test_id, args.data_dir, args.checkpoint_dir,
-        args.train_range, args.test_range, args.test_freq, args.save_freq, args.batch_size,
-        args.num_epoch, image_size, image_color, args.learning_rate, args.n_output, args.adjust_freq, factor)
-  elif args.type == 'autostop':
-    trainer = AutoStopTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
-        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
-        image_size, image_color, args.learning_rate, args.n_output)
-  elif args.type == 'layerwised':
-    trainer = LayerwisedTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
-        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
-        image_size, image_color, args.learning_rate, n_filters, size_filters, fc_nouts)
-  else:
-    params = parser(args.param_file).get_result()
-    trainer = ImageNetLayerwisedTrainer(args.test_id, args.data_dir, args.checkpoint_dir, args.train_range,
-        args.test_range, args.test_freq, args.save_freq, args.batch_size, args.num_epoch,
-        image_size, image_color, args.learning_rate, args.n_output, params)
-'''

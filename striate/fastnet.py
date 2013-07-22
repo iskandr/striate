@@ -97,7 +97,7 @@ class FastNet(object):
 
   def append_layers_from_dict(self, layers):
     for l in layers:
-      layer = self.makeLayerFromCUDACONVNET(l)
+      layer = self.makeLayerFromFASTNET(l)
       if layer:
         self.append_layer(layer)
 

@@ -145,7 +145,7 @@ class ConvLayer(WeightedLayer):
     self.padding = padding
     self.stride = stride
 
-    self.outputSize = 1 + ceil(2 * self.padding + self.imgSize - self.filterSize, self.stride)
+    self.outputSize = 1 + divup(2 * self.padding + self.imgSize - self.filterSize, self.stride)
     self.modules = self.outputSize ** 2
 
     self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
@@ -178,6 +178,7 @@ class ConvLayer(WeightedLayer):
 
   @staticmethod
   def parseFromCUDACONVNET(ld):
+    print ld.keys()
     numFilter = ld['filters']
     filterSize = ld['filterSize'][0]
     numColor = ld['channels'][0]
@@ -252,7 +253,7 @@ class MaxPoolLayer(Layer):
 
     self.batchSize, self.numColor, self.imgSize, _ = image_shape
 
-    self.outputSize = ceil(self.imgSize - self.poolSize - self.start, self.stride) + 1
+    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
 
   @staticmethod
   def parseFromFASTNET(ld):
