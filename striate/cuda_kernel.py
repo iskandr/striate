@@ -627,7 +627,7 @@ def add_vec_to_rows(mat, vec, dest=None, alpha=1.0, beta=1.0):
   if dest is None:
     dest = mat
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = mat.strides[0] / 4
   _add_vec_to_rows_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_vec_to_rows')
@@ -646,7 +646,7 @@ def add_vec_to_cols(mat, vec, dest=None, alpha=1.0, beta=1.0):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = mat.strides[0] / 4
   _add_vec_to_cols_(F(alpha), vec, F(beta), mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_vec_to_cols')
@@ -663,7 +663,7 @@ def div_vec_to_rows(mat, vec, dest=None):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = mat.strides[0] / 4
   _div_vec_to_rows_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('div_vec_to_rows')
@@ -681,7 +681,7 @@ def div_vec_to_cols(mat, vec, dest=None):
   if not dest:
     dest = mat
   block = (32, 32, 1)
-  grid = (ceil(mw , 32), ceil(mh, 32))
+  grid = (divup(mw , 32), divup(mh, 32))
   leading = mat.strides[0] / 4
   _div_vec_to_cols_(vec, mat, dest, I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('div_vec_to_cols')
@@ -710,9 +710,9 @@ def add_row_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   #  _add_row_sum_to_vec_(mat, F(alpha), vec, F(beta),I(leading), I(mh), I(mw), block = block, grid= grid)
   # else:
   #  block = (INTERNAL_SIZE, 1, 1)
-  #  grid = (ceil(mw, INTERNAL_SIZE), mh)
-  #  #tmp  = gpuarray.to_gpu(np.zeros((mh, ceil(mw, INTERNAL_SIZE)) ).astype(np.float32))
-  #  tmp = gpuarray.zeros((mh, ceil(mw, INTERNAL_SIZE)), dtype=np.float32)
+  #  grid = (divup(mw, INTERNAL_SIZE), mh)
+  #  #tmp  = gpuarray.to_gpu(np.zeros((mh, divup(mw, INTERNAL_SIZE)) ).astype(np.float32))
+  #  tmp = gpuarray.zeros((mh, divup(mw, INTERNAL_SIZE)), dtype=np.float32)
   #  #print 'TOGPU', tmp.shape
 
   #  leading = mat.strides[0]/4
@@ -789,7 +789,7 @@ def softmax_bprop(mat, label, grad):
   assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   _softmax_bprop_(mat, label, grad, I(mat.strides[0] / 4), I(mh), I(mw), block=block, grid=grid)
   timer.end('softmax_bprop')
 
@@ -798,7 +798,7 @@ def relu_activate(input, output, e):
   mh, mw = input.shape
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = input.strides[0] / 4
   _relu_activate_(input, output, F(e), I(leading), I(mh), I(mw), block=block , grid=grid)
   timer.end('relu_activate')
@@ -809,7 +809,7 @@ def relu_compute_grad(grad, output, outGrad, e):
   mh, mw = grad.shape
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = grad.strides[0] / 4
   _relu_compute_grad_(grad, output, outGrad, F(e), I(leading), I(mh), I(mw), block=block, grid=
       grid)
@@ -820,7 +820,7 @@ def tanh_activate(input, output, a, b):
   mh, mw = input.shape
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = input.strides[0] / 4
   _n2b = -2.0 * b
   _tanh_activate_(input, output, F(a), F(_n2b), I(leading), I(mh), I(mw), block=block , grid=grid)
@@ -832,7 +832,7 @@ def tanh_compute_grad(grad, output, outGrad, a, b):
   mh, mw = output.shape
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = output.strides[0] / 4
   _n4ab = -4.0 * a * b
   _tanh_compute_grad_(grad, output, outGrad, F(a), F(_n4ab), I(leading), I(mh), I(mw), block=block , grid=grid)
@@ -855,7 +855,7 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   assert (r, c) == y.shape
 
   block = (32, 32, 1)
-  grid = (ceil(c, 32), ceil(r, 32))
+  grid = (divup(c, 32), divup(r, 32))
   sleading, dleading = x.strides[0] / 4, y.strides[0] / 4
   _gpu_partial_copy_to_(x, y, I(row_from), I(row_to), I(col_from), I(col_to), I(sleading), I(dleading), block=block, grid=grid)
   timer.end('gpu_partial_copy_to')
@@ -903,7 +903,7 @@ def transpose(mat):
   dst = gpuarray.empty((mw, mh), dtype=np.float32)
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   sleading = mat.strides[0] / 4
   dleading = dst.strides[0] / 4
   _transpose_(mat, dst, I(sleading), I(dleading), I(mh), I(mw), block=block, grid=grid)
@@ -918,7 +918,7 @@ def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
   assert sh == vh and sw == vw
 
   block = (32, 32, 1)
-  grid = (ceil(sw, 32), ceil(sh, 32))
+  grid = (divup(sw, 32), divup(sh, 32))
   leading = src.strides[0] / 4
   if dest is None:
     dest = src
@@ -935,6 +935,6 @@ def bigger_than_scaler(src, scaler, dest=None):
   mh, mw = src.shape
 
   block = (32, 32, 1)
-  grid = (ceil(mw, 32), ceil(mh, 32))
+  grid = (divup(mw, 32), divup(mh, 32))
   leading = src.strides[0] / 4
   _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block=block , grid=grid)

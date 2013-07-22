@@ -1,5 +1,3 @@
-from pycuda.gpuarray import GPUArray
-from pycuda import gpuarray
 import cPickle
 import os
 import sys
@@ -48,7 +46,7 @@ class Timer:
 
 timer = Timer()
 
-def ceil(x, base):
+def divup(x, base):
   if x / base * base == x:
     return x / base
   else:
@@ -86,12 +84,13 @@ def string_to_int_list(str):
 
 
 def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
+  from pycuda import gpuarray
   print name
   if row_to == 0:
     row_to = 10
   if col_to == 0:
     col_to = 1
-  if isinstance(x, GPUArray):
+  if isinstance(x, gpuarray.GPUArray):
     a = x.get()[row_from: row_to , col_from: col_to]
   else:
     a = x[row_from: row_to , col_from: col_to]
@@ -102,7 +101,8 @@ def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
     print
 
 def abs_mean(x):
-  if isinstance(x, GPUArray):
+  from pycuda import gpuarray
+  if isinstance(x, gpuarray.GPUArray):
     return (gpuarray.sum(x.__abs__()) / x.size).get().item()
   if isinstance(x, np.ndarray):
     return np.mean(np.abs(x))
