@@ -62,6 +62,7 @@ class WeightedLayer(Layer):
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
       print 'init weight from disk'
+      weight = np.require(weight, dtype = np.float32, requirements = 'C')
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
     if bias is None:
@@ -71,7 +72,9 @@ class WeightedLayer(Layer):
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
       print 'init bias from disk'
+      bias = np.require(bias, dtype = np.float32, requirements = 'C')
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
+
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
     if self.momW > 0.0:
@@ -86,23 +89,22 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      self.weight += self.weightGrad * self.epsW / self.batchSize
-      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
-
+      #self.weight += self.weightGrad * self.epsW / self.batchSize
+      #printMatrix(self.weight, self.name)
+      #printMatrix(self.weightGrad, self.name)
+      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
+    #if self.type == 'fc':
+    #  printMatrix(self.weight, 'weight')
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      self.bias += self.biasGrad * self.epsB / self.batchSize
-      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      #self.bias += self.biasGrad * self.epsB / self.batchSize
+      #printMatrix(self.bias, self.name)
+      #printMatrix(self.biasGrad, self.name)
+      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
-
-    #if self.type == 'conv':
-    #  print self.name
-    #  a = self.bias.get()[:, 0][0:6]
-    #  for i in a:
-    #    print '%.15f' % i
 
   def scaleLearningRate(self, l):
     self.epsW *= l
@@ -236,7 +238,7 @@ class ConvLayer(WeightedLayer):
     # bprop weight
     self.weightGrad.fill(0)
     cudaconv2.convWeightActs(input, grad, self.weightGrad, self.imgSize, self.outputSize,
-        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor, 1, 0, 1, 1)
+        self.outputSize, self.filterSize, -self.padding, self.stride, self.numColor, 1, 0, 0, 1)
     # bprop bias
     self.biasGrad.fill(0)
     gpu_copy_to(grad, self.tmp)
@@ -439,13 +441,8 @@ class FCLayer(WeightedLayer):
 
   def fprop(self, input, output, train=TRAIN):
     gpu_copy_to(dot(self.weight, input), output)
-    #output.gpudata = (dot(self.weight, input)).gpudata
-    ob = output.get()
-    b = np.dot(self.weight.get(), input.get())
-    #output.set(b)
-    print ob - b
     add_vec_to_rows(output, self.bias)
-    
+
     if train == TEST:
       if self.dropRate > 0.0:
         output *= self.dropRate
@@ -495,21 +492,25 @@ class SoftmaxLayer(Layer):
     max = gpuarray.zeros((1, self.batchSize), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
-    gpu_copy_to(cumath.exp(output), output)
+    eltwise_exp(output)
+    #printMatrix(output, 'expl')
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
+    #printMatrix(sum, 'sum')
     div_vec_to_cols(output, sum)
-
     if PFout:
       printMatrix(output, self.name)
 
   def logreg_cost(self, label, output):
+    if self.cost.shape[0] !=  self.batchSize:
+      self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     maxid = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
-
+    print output.shape
+    print label.shape
     logreg_cost_col_reduce(output, label, self.cost)
-    #printMatrix(self.cost, 'logreg')
+    printMatrix(self.cost, 'logreg')
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)

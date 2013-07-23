@@ -97,7 +97,7 @@ class FastNet(object):
 
   def append_layers_from_dict(self, layers):
     for l in layers:
-      layer = self.makeLayerFromFASTNET(l)
+      layer = self.makeLayerFromCUDACONVNET(l)
       if layer:
         self.append_layer(layer)
 
@@ -312,7 +312,7 @@ class FastNet(object):
 
     timer.end('prepare assignment')
 
-    self.label.shape = (label.size, 1)
+    self.label = self.label.reshape(label.size, 1)
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
     if self.output is None or self.output.shape != outputShape:
@@ -324,7 +324,6 @@ class FastNet(object):
     self.prepare_for_train(data, label)
     # printMatrix(data, 'data')
     self.fprop(self.data, self.output, train)
-    #printMatrix(self.output, 'output')
     cost, correct = self.get_cost(self.label, self.output)
     self.cost += cost
     self.correct += correct

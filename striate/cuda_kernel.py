@@ -13,8 +13,8 @@ import numpy as np
 import pycuda
 import sys
 import pycuda.autoinit
-#from scikits.cuda import linalg
-#linalg.init()
+from scikits.cuda import linalg
+linalg.init()
 
 try:
   cublas.cublasInit()
@@ -537,6 +537,19 @@ _bigger_than_scaler_ = CompiledSource('''
       dest[idx] = src[idx] >= scaler ? 1.0 : 0.0;
     }''', 'bigger_than_scaler')
 
+_eltwise_exp_ = CompiledSource('''
+    __global__
+    void eltwise_exp(float* src, float* dest, int rows, int cols, int leading) {
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if( i >= cols ) return ;
+      if( j >= rows ) return ;
+
+      int idx = i + j * leading;
+      dest[idx] = __expf(src[idx]);
+    }''', 'eltwise_exp')
+
 
 def row_max_reduce(x, mat):
   '''
@@ -734,10 +747,11 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  grid = (mw, 1)
-  block = (1, mh, 1)
-  leading = mat.strides[0] / 4
-  _add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
+  cudaconv2.sum(mat, 0, vec)
+  #grid = (mw, 1)
+  #block = (1, mh, 1)
+  #leading = mat.strides[0] / 4
+  #_add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_col_sum_to_vec')
 
 
@@ -882,12 +896,12 @@ def dot(x, y):
       if len(y.shape) == 1:
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
-      #result = linalg.dot(x, y)
-      result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
-      sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
-            x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
-            result.gpudata, result.shape[1])
-      result = transpose(result)
+      result = linalg.dot(x, y)
+      #result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
+      #sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
+      #      x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
+      #      result.gpudata, result.shape[1])
+      #result = transpose(result)
 
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1
@@ -938,3 +952,13 @@ def bigger_than_scaler(src, scaler, dest=None):
   grid = (divup(mw, 32), divup(mh, 32))
   leading = src.strides[0] / 4
   _bigger_than_scaler_(src, dest, F(scaler), I(mh), I(mw), I(leading), block=block , grid=grid)
+
+def eltwise_exp(src, dest = None):
+  if dest is None:
+    dest = src
+  mh, mw = src.shape
+
+  block = (32, 32, 1)
+  grid =  (divup(mw, 32), divup(mh, 32))
+  leading = src.strides[0] / 4
+  _eltwise_exp_(src, dest, I(mh), I(mw), I(leading), block = block, grid = grid)

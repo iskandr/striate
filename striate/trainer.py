@@ -74,7 +74,9 @@ class Trainer:
     locked_data[:] = mini_data
 
     input = gpuarray.to_gpu(locked_data)
-    label = gpuarray.to_gpu(batch_label[i * batch_size : (i + 1) * batch_size])
+    label = batch_label[i * batch_size : (i + 1) * batch_size]
+    #label = gpuarray.to_gpu(np.require(batch_label[i * batch_size : (i + 1) * batch_size],  dtype =
+    #  np.float, requirements = 'C'))
 
     return input, label
 
@@ -103,9 +105,9 @@ class Trainer:
 
   def get_test_error(self):
     start = time.time()
-    _, _, self.test_data = self.test_dp.get_next_batch()
+    self.test_data = self.test_dp.get_next_batch()
 
-    self.num_test_minibatch = divup(self.test_data['data'].shape[1], self.batch_size)
+    self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
     for i in range(self.num_test_minibatch):
       input, label = self.get_next_minibatch(i, TEST)
       self.net.train_batch(input, label, TEST)
@@ -400,25 +402,25 @@ if __name__ == '__main__':
   description = 'first try with momentum'
 
   # parameters for imagenet
-  data_dir = '/ssd/nn-data/imagenet/'
-  param_file = 'striate/imagenet.cfg'
-  data_provider = 'imagenet'
-  train_range = range(1, 1200)
-  test_range = range(1200, 1300)
-  save_freq = test_freq = 100
-  adjust_freq = 100
-  image_size = 224
-  n_out = 10
+  #data_dir = '/ssd/nn-data/imagenet/'
+  #param_file = 'striate/imagenet.cfg'
+  #data_provider = 'imagenet'
+  #train_range = range(1, 1200)
+  #test_range = range(1200, 1300)
+  #save_freq = test_freq = 100
+  #adjust_freq = 100
+  #image_size = 224
+  #n_out = 10
 
-#   data_dir = '/hdfs/cifar/data/cifar-10-python/'
-#   param_file = 'striate/cifar10.cfg'
-#   train_range = range(1, 2)
-#   test_range = range(41, 49)
-#   data_provider = 'cifar10'
-#   save_freq = test_freq = 20
-#   adjust_freq = 1
-#   image_size = 32
-#   n_out = 10
+  data_dir = '/hdfs/cifar/data/cifar-10-python/'
+  param_file = 'striate/cifar10.cfg'
+  train_range = range(1, 2)
+  test_range = range(41, 49)
+  data_provider = 'cifar10'
+  save_freq = test_freq = 20
+  adjust_freq = 1
+  image_size = 32
+  n_out = 10
 
   checkpoint_dir = './striate/checkpoint/'
 
@@ -426,15 +428,15 @@ if __name__ == '__main__':
   num_epoch = 1
 
   image_color = 3
-  learning_rate = 1.0
+  learning_rate = 1
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
 
-  model = Parser(param_file).get_result()
+  #model = Parser(param_file).get_result()
   #import pprint
   #pprint.pprint(model)
-  #model = util.load('./striate/stdmodel')
+  model = util.load('./striate/stdmodel')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
                     test_range, test_freq, save_freq, batch_size, num_epoch,
