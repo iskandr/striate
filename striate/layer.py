@@ -89,15 +89,16 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
-
+      self.weight += self.weightGrad * self.epsW / self.batchSize
+      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
 
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      self.bias += self.biasGrad * self.epsB / self.batchSize
+      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
 
   def scaleLearningRate(self, l):
@@ -496,8 +497,9 @@ class SoftmaxLayer(Layer):
     max = gpuarray.zeros((1, self.batchSize), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
-    eltwise_exp(output)
+    #eltwise_exp(output)
     #printMatrix(output, 'expl')
+    gpu_copy_to(cumath.exp(output), output)
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
     #printMatrix(sum, 'sum')
@@ -506,8 +508,8 @@ class SoftmaxLayer(Layer):
       printMatrix(output, self.name)
 
   def logreg_cost(self, label, output):
-    if self.cost.shape[0] !=  self.batchSize:
-      self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
+    #if self.cost.shape[0] !=  self.batchSize:
+    #  self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     maxid = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)

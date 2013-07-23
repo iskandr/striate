@@ -275,10 +275,10 @@ DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
 
 
 if __name__ == "__main__":
-  data_dir = '/hdfs/imagenet/batches/imagesize-256/'
-  dp = ImageNetDataProvider(data_dir, [1])
+  data_dir = '/ssd/nn-data/imagenet/'
+  dp = ImageNetDataProvider(data_dir, range(1, 10), category_range = range(1, 10))
   # data_dir = '/hdfs/cifar/data/cifar-10-python/'
   # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
   for i in range(1):
-    epoch, batch, data = dp.get_next_batch()
-    printMatrix(data['data'], 'data')
+    data = dp.get_next_batch()
+    print data.data.shape

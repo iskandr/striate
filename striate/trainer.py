@@ -75,6 +75,8 @@ class Trainer:
 
     input = gpuarray.to_gpu(locked_data)
     label = batch_label[i * batch_size : (i + 1) * batch_size]
+    #label = gpuarray.to_gpu(label)
+
     #label = gpuarray.to_gpu(np.require(batch_label[i * batch_size : (i + 1) * batch_size],  dtype =
     #  np.float, requirements = 'C'))
 
@@ -402,25 +404,25 @@ if __name__ == '__main__':
   description = 'first try with momentum'
 
   # parameters for imagenet
-  #data_dir = '/ssd/nn-data/imagenet/'
-  #param_file = 'striate/imagenet.cfg'
-  #data_provider = 'imagenet'
-  #train_range = range(1, 1200)
-  #test_range = range(1200, 1300)
-  #save_freq = test_freq = 100
-  #adjust_freq = 100
-  #image_size = 224
-  #n_out = 10
-
-  data_dir = '/hdfs/cifar/data/cifar-10-python/'
-  param_file = 'striate/cifar10.cfg'
-  train_range = range(1, 41)
-  test_range = range(41, 49)
-  data_provider = 'cifar10'
-  save_freq = test_freq = 20
-  adjust_freq = 1
-  image_size = 32
+  data_dir = '/ssd/nn-data/imagenet/'
+  param_file = 'striate/imagenet.cfg'
+  data_provider = 'imagenet'
+  train_range = range(1, 1200)
+  test_range = range(1200, 1300)
+  save_freq = test_freq = 100
+  adjust_freq = 100
+  image_size = 224
   n_out = 10
+
+#  data_dir = '/hdfs/cifar/data/cifar-10-python/'
+#  param_file = 'striate/cifar10.cfg'
+#  train_range = range(1, 41)
+#  test_range = range(41, 49)
+#  data_provider = 'cifar10'
+#  save_freq = test_freq = 20
+#  adjust_freq = 1
+#  image_size = 32
+#  n_out = 10
 
   checkpoint_dir = './striate/checkpoint/'
 

@@ -13,8 +13,8 @@ import numpy as np
 import pycuda
 import sys
 import pycuda.autoinit
-from scikits.cuda import linalg
-linalg.init()
+#from scikits.cuda import linalg
+#linalg.init()
 
 try:
   cublas.cublasInit()
@@ -747,11 +747,11 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  cudaconv2.sum(mat, 0, vec)
-  #grid = (mw, 1)
-  #block = (1, mh, 1)
-  #leading = mat.strides[0] / 4
-  #_add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
+  #cudaconv2.sum(mat, 0, vec)
+  grid = (mw, 1)
+  block = (1, mh, 1)
+  leading = mat.strides[0] / 4
+  _add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_col_sum_to_vec')
 
 
@@ -896,12 +896,12 @@ def dot(x, y):
       if len(y.shape) == 1:
         needs_ravel = True
         y = y.reshape(y.shape + (1,))
-      result = linalg.dot(x, y)
-      #result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
-      #sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
-      #      x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
-      #      result.gpudata, result.shape[1])
-      #result = transpose(result)
+      #result = linalg.dot(x, y)
+      result = GPUArray((y.shape[1], x.shape[0]), dtype=x.dtype)
+      sgemm('t', 't', x.shape[0], y.shape[1], x.shape[1], 1.0,
+            x.gpudata, x.shape[1], y.gpudata, y.shape[1], 0.0,
+            result.gpudata, result.shape[1])
+      result = transpose(result)
 
       if needs_ravel:
         assert result.shape[1] == 1 or result.shape[0] == 1

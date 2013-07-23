@@ -312,7 +312,7 @@ class FastNet(object):
 
     timer.end('prepare assignment')
 
-    self.label = self.label.reshape(label.size, 1)
+    self.label.shape = (label.size, 1)
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
     if self.output is None or self.output.shape != outputShape:
