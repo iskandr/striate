@@ -89,20 +89,14 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      #self.weight += self.weightGrad * self.epsW / self.batchSize
-      #printMatrix(self.weight, self.name)
-      #printMatrix(self.weightGrad, self.name)
       matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
-    #if self.type == 'fc':
-    #  printMatrix(self.weight, 'weight')
+
+
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      #self.bias += self.biasGrad * self.epsB / self.batchSize
-      #printMatrix(self.bias, self.name)
-      #printMatrix(self.biasGrad, self.name)
       matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
 
@@ -192,6 +186,10 @@ class ConvLayer(WeightedLayer):
     epsW = ld['epsW'][0]
     epsB = ld['epsB']
 
+    momW = ld['momW'][0]
+    momB = ld['momB']
+
+    wc = ld['wc'][0]
     imgSize = ld['imgSize']
 
     bias = ld['biases']
@@ -199,8 +197,8 @@ class ConvLayer(WeightedLayer):
 
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, bias = bias,
-        weight = weight)
+    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW
+        = momW, momB = momB, wc = wc, bias = bias, weight = weight)
 
   def dump(self):
     d = WeightedLayer.dump(self)
@@ -412,13 +410,19 @@ class FCLayer(WeightedLayer):
     epsW = ld['epsW'][0]
     initB = ld['initB']
     initW = ld['initW'][0]
+    momB = ld['momB']
+    momW = ld['momW'][0]
+
+    wc = ld['wc'][0]
+    dropRate = ld['dropRate']
 
     n_out = ld['outputs']
     bias = ld['biases'].transpose()
     weight = ld['weights'][0].transpose()
     name = ld['name']
     input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, weight = weight, bias = bias)
+    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
+        = wc, dropRate = dropRate, weight = weight, bias = bias)
 
 
   def dump(self):
@@ -507,10 +511,7 @@ class SoftmaxLayer(Layer):
     maxid = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
-    print output.shape
-    print label.shape
     logreg_cost_col_reduce(output, label, self.cost)
-    printMatrix(self.cost, 'logreg')
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)

@@ -414,7 +414,7 @@ if __name__ == '__main__':
 
   data_dir = '/hdfs/cifar/data/cifar-10-python/'
   param_file = 'striate/cifar10.cfg'
-  train_range = range(1, 2)
+  train_range = range(1, 41)
   test_range = range(41, 49)
   data_provider = 'cifar10'
   save_freq = test_freq = 20
@@ -425,7 +425,7 @@ if __name__ == '__main__':
   checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
-  num_epoch = 1
+  num_epoch = 10
 
   image_color = 3
   learning_rate = 1
@@ -433,10 +433,10 @@ if __name__ == '__main__':
   size_filters = [5, 5]
   fc_nouts = [10]
 
-  #model = Parser(param_file).get_result()
-  #import pprint
-  #pprint.pprint(model)
-  model = util.load('./striate/stdmodel')
+  model = Parser(param_file).get_result()
+  import pprint
+  pprint.pprint(model)
+  #model = util.load('./striate/stdmodel')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
                     test_range, test_freq, save_freq, batch_size, num_epoch,
