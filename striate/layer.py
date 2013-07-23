@@ -514,6 +514,9 @@ class SoftmaxLayer(Layer):
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
     logreg_cost_col_reduce(output, label, self.cost)
+#     print 'Output: ', output.get()
+#     print 'Label: ', label.get()
+#     print self.cost
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)

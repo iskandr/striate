@@ -54,8 +54,9 @@ class Trainer:
     self.checkpoint_file = ''
 
   def init_data_provider(self):
-    self.train_dp = DataProvider.get_by_name(self.data_provider)(self.data_dir, self.train_range)
-    self.test_dp = DataProvider.get_by_name(self.data_provider)(self.data_dir, self.test_range)
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.train_range, category_range=range(10))
+    self.test_dp = dp(self.data_dir, self.test_range, category_range=range(10))
 
 
   def get_next_minibatch(self, i, train=TRAIN):
@@ -430,14 +431,12 @@ if __name__ == '__main__':
   num_epoch = 10
 
   image_color = 3
-  learning_rate = 1
+  learning_rate = 1.0
   n_filters = [64, 64]
   size_filters = [5, 5]
   fc_nouts = [10]
 
   model = Parser(param_file).get_result()
-  import pprint
-  pprint.pprint(model)
   #model = util.load('./striate/stdmodel')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,

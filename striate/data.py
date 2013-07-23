@@ -1,19 +1,17 @@
 from PIL import Image
+from os.path import basename
 from striate import util
-from striate.util import printMatrix
 import Queue
 import cPickle
+import collections
 import glob
-import multiprocessing
 import numpy as np
 import os
 import random
 import re
-import synids
 import sys
 import threading
 import time
-import collections
 
 def load(filename):
   with open(filename, 'rb') as f:
@@ -32,14 +30,6 @@ def join(lsts):
 BatchData = collections.namedtuple('BatchData', 
                                    ['data', 'labels', 'epoch', 'batchnum'])
 
-class SharedArray(object):
-  def __init__(self, nparray):
-    self.data = multiprocessing.RawArray('f', np.prod(nparray.shape))
-    self.shape = nparray.shape
-    self.dtype = nparray.dtype
-
-  def to_numpy(self):
-    return np.frombuffer(self.data, self.dtype).reshape(self.shape).copy()
 
 dp_dict = {}
 
@@ -138,10 +128,19 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.buffer_idx = 0
     
     dirs = glob.glob(data_dir + '/n*')
+    synid_to_dir = {}
+    for d in dirs:
+      synid_to_dir[basename(d)[1:]] = d
+    
     if category_range is None:
       cat_dirs = dirs
     else:
-      cat_dirs = [dirs[i] for i in category_range]
+      cat_dirs = []
+      for i in category_range:
+        synid = self.batch_meta['label_to_synid'][i]
+        util.log('Using category: %d, synid: %s, label: %s',
+                 i, synid, self.batch_meta['label_names'][i])
+        cat_dirs.append(synid_to_dir[synid])
 
     self.images = []
     batch_dict = dict((k, k) for k in self.batch_range)
@@ -211,7 +210,7 @@ class ImageNetDataProvider(ParallelDataProvider):
     for idx, filename in enumerate(names):
       filename = os.path.basename(filename)
       synid = filename[1:].split('_')[0]
-      label = synids.SYNID_TO_LABEL[synid]
+      label = self.batch_meta['synid_to_label'][synid]
       labels[0, idx] = label
 
     st = time.time()

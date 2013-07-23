@@ -309,10 +309,10 @@ class FastNet(object):
       self.label = gpuarray.to_gpu(label).astype(np.float32)
     else:
       self.label = label
-
+      
     timer.end('prepare assignment')
 
-    self.label.shape = (label.size, 1)
+    self.label = self.label.reshape((label.size, 1))
     self.numCase += input.shape[1]
     outputShape = self.inputShapes[-1]
     if self.output is None or self.output.shape != outputShape:
