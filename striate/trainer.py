@@ -148,7 +148,6 @@ class Trainer:
 
       start = time.time()
       self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
-      util.log('%s', self.num_train_minibatch)
       t = 0
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
@@ -397,22 +396,62 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 
 
-class TempTrainer(Trainer):
-  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size,
-               image_color, learning_rate, n_out, initModel):
-    model = initModel
-    assert 'model_state' in model
-    layers = model['model_state']['layers']
-    softmax = layers[-1]
-    softmax['inputShape'] = (1000, 128)
+class ImageNetCatewisedTrainer(Trainer):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
+      test_freq, save_freq, batch_size, cate_epoch, image_size, image_color, learning_rate,
+      initModel, range_list):
+    # no meaning
+    fake_nout = 1000
+    assert len(range_list) == len(cate_epoch) and range_list[-1] == 1000
 
-    fc = layers[-2]
-    fc['outputSize'] = 1000
-    fc['weight'] = None
-    fc['bias'] = None
+
+    self.init_output = range_list[0]
+    self.range_list = range_list[1:]
+    num_epoch = cate_epoch[0]
+    self.cate_epoch = cate_epoch[1:]
+
+    fc = initModel[-2]
+    fc['outputSize'] = self.init_output
+
+    self.learning_rate = learning_rate[0]
+    self.learning_rate_list = learning_rate[1:]
+
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
         test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color,
-        learning_rate, n_out, initModel = initModel)
+        self.learning_rate, fake_nout, initModel = initModel)
+
+  def init_data_provider(self):
+    ''' we begin with 100 categories'''
+    self.set_category_range(self.init_output)
+
+  def set_category_range(self, r):
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
+    self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
+
+
+  def train(self):
+    Trainer.train(self)
+
+    for i, cate in enumerate(self.range_list):
+      self.set_category_range(cate)
+      self.num_epoch = self.cate_epoch[i]
+      self.num_batch = self.curr_epoch = self.curr_batch = 0
+
+      model = load(self.checkpoint_file)
+      layers = model['model_state']['layers']
+
+      fc = layers[-2]
+      fc['outputSize'] = cate
+      fc['weight'] = None
+      fc['bias'] = None
+
+      self.learning_rate = self.learning_rate_list[i]
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+
+      self.net.clear_weight_incr()
+      Trainer.train(self)
+
 
 
 
@@ -426,6 +465,8 @@ if __name__ == '__main__':
   data_dir = '/ssd/nn-data/imagenet/'
   param_file = 'striate/imagenet.cfg'
   data_provider = 'imagenet'
+  #train_range = range(1, 1200)
+  #test_range = range(1200, 1300)
   train_range = range(1, 1200)
   test_range = range(1200, 1300)
   save_freq = test_freq = 100
@@ -446,17 +487,18 @@ if __name__ == '__main__':
   checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
-  num_epoch = 50
+  num_epoch = [10, 10, 10, 50]
+  range_list = [100, 200, 500, 1000]
 
   image_color = 3
-  learning_rate = 0.01
+  learning_rate = [0.1, 0.1, 0.05, 0.02]
 
 
-  #model = Parser(param_file).get_result()
+  model = Parser(param_file).get_result()
   #model = util.load('./striate/checkpoint/test3-46.155')
-  model = util.load('./striate/checkpoint/test0-1.457')
+  #model = util.load('./striate/checkpoint/test0-1.457')
 
-  trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
+  trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
                     test_range, test_freq, save_freq, batch_size, num_epoch,
-                    image_size, image_color, learning_rate, n_out, initModel=model)
+                    image_size, image_color, learning_rate,initModel = model, range_list = range_list)
   trainer.train()

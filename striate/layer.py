@@ -95,7 +95,7 @@ class WeightedLayer(Layer):
 
 
   def clear_weight_incr(self):
-    self.weightInrc.fill(0)
+    self.weightIncr.fill(0)
 
   def clear_bias_incr(self):
     self.biasIncr.fill(0)

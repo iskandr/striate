@@ -250,6 +250,13 @@ class FastNet(object):
       if isinstance(layer, WeightedLayer):
         layer.scaleLearningRate(factor)
 
+
+  def clear_weight_incr(self):
+    for l in self.layers:
+      if isinstance(l, WeightedLayer):
+        l.clear_incr()
+
+
   def get_cost(self, label, output):
     outputLayer = self.layers[-1]
     outputLayer.logreg_cost(label, output)
