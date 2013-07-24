@@ -171,7 +171,6 @@ class FastNet(object):
     self.imgShapes.append(outputShape)
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
-#    util.log('Allocating %s bytes', np.prod(self.inputShapes[-2]) * 4)
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
     print 'append a', layer.type, 'layer', layer.name, 'to network'
     print 'the output of the layer is', outputShape

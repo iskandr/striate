@@ -47,7 +47,8 @@ def randn(shape, dtype):
   return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
 
 class WeightedLayer(Layer):
-  def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias, weightShape, biasShape):
+  def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
+      weightIncr , biasIncr, weightShape, biasShape):
     Layer.__init__(self, name, type)
 
     self.epsW = epsW
@@ -78,10 +79,30 @@ class WeightedLayer(Layer):
     self.weightGrad = gpuarray.zeros_like(self.weight)
     self.biasGrad = gpuarray.zeros_like(self.bias)
     if self.momW > 0.0:
-      self.weightIncr = gpuarray.zeros_like(self.weight)
+      if weightIncr is None:
+        self.weightIncr = gpuarray.zeros_like(self.weight)
+      else:
+        print 'init weightIncr from disk'
+        #weightIncr = np.require(weightIncr, dtype = np.float, requirements = 'C')
+        self.weightIncr = gpuarray.to_gpu(weightIncr)
     if self.momW > 0.0:
-      self.biasIncr = gpuarray.zeros_like(self.bias)
+      if biasIncr is None:
+        self.biasIncr = gpuarray.zeros_like(self.bias)
+      else:
+        print 'init biasIncr from disk'
+        #biasIncr = np.require(biasIncr, dtype = np.float, requirements = 'C')
+        self.biasIncr = gpuarray.to_gpu(biasIncr)
 
+
+  def clear_weight_incr(self):
+    self.weightInrc.fill(0)
+
+  def clear_bias_incr(self):
+    self.biasIncr.fill(0)
+
+  def clear_incr(self):
+    self.clear_weight_incr()
+    self.clear_bias_incr()
 
   def update(self):
     if self.momW > 0.0:
@@ -89,16 +110,16 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      self.weight += self.weightGrad * self.epsW / self.batchSize
-      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
+      #self.weight += self.weightGrad * self.epsW / self.batchSize
+      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
 
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      self.bias += self.biasGrad * self.epsB / self.batchSize
-      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      #self.bias += self.biasGrad * self.epsB / self.batchSize
+      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
 
   def scaleLearningRate(self, l):
@@ -123,16 +144,18 @@ class WeightedLayer(Layer):
 
   def dump(self):
     d = Layer.dump(self)
+    d['weight'] = self.weight.get()
+    d['bias'] = self.bias.get()
     if 'weightIncr' in d:
-      del d['weightIncr']
+      d['weightIncr'] = self.weightIncr.get()
     if 'biasIncr' in d:
-      del d['biasIncr']
+      d['biasIncr'] = self.biasIncr.get()
     del d['weightGrad'], d['biasGrad']
     return d
 
 class ConvLayer(WeightedLayer):
   def __init__(self , name, filter_shape, image_shape, padding=2, stride=1, initW=0.01, initB=
-      0.0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0, bias=None, weight=None):
+      0.0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0, bias=None, weight=None, weightIncr = None, biasIncr = None):
 
     self.filterSize = filter_shape[2]
     self.numFilter = filter_shape[0]
@@ -147,8 +170,8 @@ class ConvLayer(WeightedLayer):
 
     self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
     self.biasShape = (self.numFilter, 1)
-    WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
-        self.weightShape, self.biasShape)
+    WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
+        bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
 
   @staticmethod
   def parseFromFASTNET(ld):
@@ -166,11 +189,13 @@ class ConvLayer(WeightedLayer):
     wc = ld['wc'] if 'wc' in ld else 0.0
     bias = ld['bias'] if 'bias' in ld else None
     weight = ld['weight'] if 'weight' in ld else None
+    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
+    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
     name = ld['name']
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
-                     momB, wc, bias, weight)
+                     momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
 
   @staticmethod
@@ -204,8 +229,6 @@ class ConvLayer(WeightedLayer):
   def dump(self):
     d = WeightedLayer.dump(self)
     del d['tmp']
-    d['weight'] = self.weight.get()
-    d['bias'] = self.bias.get()
     return d
 
 
@@ -371,7 +394,8 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
 class FCLayer(WeightedLayer):
   def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
-      momW=0.0, momB=0.0, wc=0.0, dropRate=0.0, weight=None, bias=None):
+      momW=0.0, momB=0.0, wc=0.0, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
+      = None):
     self.inputShape = input_shape
     self.inputSize, self.batchSize = input_shape
 
@@ -380,8 +404,8 @@ class FCLayer(WeightedLayer):
 
     self.weightShape = (self.outputSize, self.inputSize)
     self.biasShape = (self.outputSize, 1)
-    WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight, bias, self.weightShape,
-        self.biasShape)
+    WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
+        bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
 
 
   @staticmethod
@@ -400,9 +424,13 @@ class FCLayer(WeightedLayer):
     weight = ld['weight'] if 'weight' in ld else None
     if isinstance(weight, list):
       weight = np.concatenate(weight)
+
+    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
+    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
     name = ld['name']
     input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate, weight, bias)
+    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
+        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr)
 
 
   @staticmethod
@@ -428,6 +456,7 @@ class FCLayer(WeightedLayer):
 
   def dump(self):
     d = WeightedLayer.dump(self)
+    '''
     weight = self.weight.get()
     if weight.shape[1] > 96 * 26 * 26:
       print 'weight of fc layer is too larget, split.....'
@@ -435,7 +464,7 @@ class FCLayer(WeightedLayer):
     else:
       weights = weight
     d['weight'] = weights
-    d['bias'] = self.bias.get()
+    '''
     if 'dropMask' in d:
       del d['dropMask']
     return d
@@ -497,9 +526,9 @@ class SoftmaxLayer(Layer):
     max = gpuarray.zeros((1, self.batchSize), dtype=np.float32)
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
-    #eltwise_exp(output)
+    eltwise_exp(output)
     #printMatrix(output, 'expl')
-    gpu_copy_to(cumath.exp(output), output)
+    #gpu_copy_to(cumath.exp(output), output)
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
     #printMatrix(sum, 'sum')
@@ -508,8 +537,8 @@ class SoftmaxLayer(Layer):
       printMatrix(output, self.name)
 
   def logreg_cost(self, label, output):
-    #if self.cost.shape[0] !=  self.batchSize:
-    #  self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
+    if self.cost.shape[0] !=  self.batchSize:
+      self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     maxid = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)

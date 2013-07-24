@@ -18,7 +18,7 @@ import time
 
 class Trainer:
   CHECKPOINT_REGEX = None
-  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size, 
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size,
                image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
     self.test_id = test_id
     self.data_dir = data_dir
@@ -55,8 +55,8 @@ class Trainer:
 
   def init_data_provider(self):
     dp = DataProvider.get_by_name(self.data_provider)
-    self.train_dp = dp(self.data_dir, self.train_range, category_range=range(10))
-    self.test_dp = dp(self.data_dir, self.test_range, category_range=range(10))
+    self.train_dp = dp(self.data_dir, self.train_range, category_range=range(1000))
+    self.test_dp = dp(self.data_dir, self.test_range, category_range=range(1000))
 
 
   def get_next_minibatch(self, i, train=TRAIN):
@@ -90,8 +90,6 @@ class Trainer:
     model['epoch'] = self.num_epoch + 1
     model['layers'] = self.net.get_dumped_layers()
 
-    #for param in model['layers']:
-    #  print param.keys()
     model['train_outputs'] = self.train_outputs
     model['test_outputs'] = self.test_outputs
 
@@ -104,7 +102,7 @@ class Trainer:
     self.checkpoint_file = checkpoint_file_path
     print checkpoint_file_path
     with open(checkpoint_file_path, 'w') as f:
-      cPickle.dump(dic, f)
+      cPickle.dump(dic, f, protocol=-1)
 
   def get_test_error(self):
     start = time.time()
@@ -141,15 +139,16 @@ class Trainer:
     return self.num_batch % self.adjust_freq == 0
 
   def train(self):
-    self.print_net_summary() 
+    self.print_net_summary()
     util.log('Starting training...')
     while self.check_continue_trainning():
       self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
       self.curr_epoch = self.train_data.epoch
       self.curr_batch = self.train_data.batchnum
-       
+
       start = time.time()
       self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
+      util.log('%s', self.num_train_minibatch)
       t = 0
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
@@ -217,11 +216,11 @@ class AdaptiveLearningRateTrainer(Trainer):
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, initModel=
       None, adjust_freq=10, factor=[1.0]):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq
-=adjust_freq, initModel=initModel, factor=factor, autoInit=False)
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq = adjust_freq,
+        initModel=initModel, factor=factor, autoInit=False)
     self.train_data = self.train_dp.get_next_batch()
     batch = self.train_data.batchnum
-    
+
     # if self.train_data.data.shape[1] > 1000:
     #  train_data = (self.train_data.data[:, :1000] , self.train_data.labels[:1000])
     # else:
@@ -398,6 +397,25 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 
 
+class TempTrainer(Trainer):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size,
+               image_color, learning_rate, n_out, initModel):
+    model = initModel
+    assert 'model_state' in model
+    layers = model['model_state']['layers']
+    softmax = layers[-1]
+    softmax['inputShape'] = (1000, 128)
+
+    fc = layers[-2]
+    fc['outputSize'] = 1000
+    fc['weight'] = None
+    fc['bias'] = None
+    Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
+        test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color,
+        learning_rate, n_out, initModel = initModel)
+
+
+
 if __name__ == '__main__':
   test_des_file = './testdes'
   factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75, 0.66]
@@ -428,16 +446,15 @@ if __name__ == '__main__':
   checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
-  num_epoch = 10
+  num_epoch = 50
 
   image_color = 3
-  learning_rate = 1.0
-  n_filters = [64, 64]
-  size_filters = [5, 5]
-  fc_nouts = [10]
+  learning_rate = 0.01
 
-  model = Parser(param_file).get_result()
-  #model = util.load('./striate/stdmodel')
+
+  #model = Parser(param_file).get_result()
+  #model = util.load('./striate/checkpoint/test3-46.155')
+  model = util.load('./striate/checkpoint/test0-1.457')
 
   trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
                     test_range, test_freq, save_freq, batch_size, num_epoch,

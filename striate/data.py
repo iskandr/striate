@@ -138,8 +138,7 @@ class ImageNetDataProvider(ParallelDataProvider):
       cat_dirs = []
       for i in category_range:
         synid = self.batch_meta['label_to_synid'][i]
-        util.log('Using category: %d, synid: %s, label: %s',
-                 i, synid, self.batch_meta['label_names'][i])
+        #util.log('Using category: %d, synid: %s, label: %s', i, synid, self.batch_meta['label_names'][i])
         cat_dirs.append(synid_to_dir[synid])
 
     self.images = []
@@ -184,6 +183,8 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.get_next_index()
     
     self.curr_batch = self.batch_range[self.curr_batch_index]
+    if self.curr_batch_index == 0:
+      self.curr_epoch += 1
     epoch = self.curr_epoch
     batchnum = self.curr_batch
     names = self.images[self.batches[batchnum]]
@@ -205,7 +206,8 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.__trim_borders(images, cropped)
 
     load_time = time.time() - st
-
+  
+    clabel = []
     # extract label from the filename
     for idx, filename in enumerate(names):
       filename = os.path.basename(filename)
@@ -224,8 +226,8 @@ class ImageNetDataProvider(ParallelDataProvider):
     labels = labels.reshape(cropped.shape[1],)
     labels = np.require(labels, dtype=np.single, requirements='C')
 
-    util.log("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
-             num_imgs, time.time() - start, load_time, align_time)
+    #util.log("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
+    #         num_imgs, time.time() - start, load_time, align_time)
     # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
 
     return BatchData(cropped, labels, epoch, batchnum)
