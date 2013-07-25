@@ -1,7 +1,5 @@
-import sys
+from striate.util import isfloat
 import os
-import string
-from util import *
 
 class Parser:
   def __init__(self, parsing_file):
@@ -34,3 +32,4 @@ class Parser:
             value = float(value)
 
           self.rst[-1][key] = value
+

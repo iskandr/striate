@@ -6,7 +6,7 @@ Created on Jun 11, 2013
 
 from layer import *
 from pycuda import cumath, gpuarray, driver as cuda
-from striate import util
+from striate import util, parser
 from striate.util import *
 import cudaconv2
 import numpy as np
@@ -30,109 +30,17 @@ class FastNet(object):
     self.numConv = 0
     if initModel:
       if 'model_state' in initModel:
-        self.append_layers_from_dict(initModel['model_state']['layers'])
+          add_fastnet_layers(self, initModel['model_state']['layers'])
       else:
-        self.append_layers_from_dict(initModel)  # param of layers
+        add_fastnet_layers(self, initModel)
     elif autoAdd:  # for imagenet, use param file
-      self.autoAddLayerForCifar10(numOutput)
+      add_cifar10_layers(self, 10)
 
     self.adjust_learning_rate(self.learningRate)
 
     for l in self.layers:
       util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
-  def makeLayerFromFASTNET(self, ld):
-    if ld['type'] == 'conv':
-      ld['imgShape'] = self.imgShapes[-1]
-      return ConvLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'pool':
-      ld['imgShape'] = self.imgShapes[-1]
-      return MaxPoolLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'neuron':
-      ld['imgShape'] = self.imgShapes[-1]
-      return NeuronLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'fc':
-      ld['inputShape'] = self.inputShapes[-1]
-      return FCLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'softmax':
-      ld['inputShape'] = self.inputShapes[-1]
-      return SoftmaxLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'rnorm':
-      ld['imgShape'] = self.imgShapes[-1]
-      return ResponseNormLayer.parseFromFASTNET(ld)
-
-    if ld['type'] == 'cmrnorm':
-      ld['imgShape'] = self.imgShapes[-1]
-      return CrossMapResponseNormLayer.parseFromFASTNET(ld)
-
-  def makeLayerFromCUDACONVNET(self, ld):
-    if ld['type'] == 'conv':
-      ld['imgShape'] = self.imgShapes[-1]
-      return ConvLayer.parseFromCUDACONVNET(ld)
-
-    if ld['type'] == 'pool':
-      ld['imgShape'] = self.imgShapes[-1]
-      return MaxPoolLayer.parseFromCUDACONVNET(ld)
-
-    if ld['type'] == 'neuron':
-      ld['imgShape'] = self.imgShapes[-1]
-      return NeuronLayer.parseFromCUDACONVNET(ld)
-
-    if ld['type'] == 'fc':
-      ld['inputShape'] = self.inputShapes[-1]
-      return FCLayer.parseFromCUDACONVNET(ld)
-
-    if ld['type'] == 'softmax':
-      ld['inputShape'] = self.inputShapes[-1]
-      return SoftmaxLayer.parseFromCUDACONVNET(ld)
-
-    if ld['type'] == 'rnorm':
-      ld['imgShape'] = self.imgShapes[-1]
-      return ResponseNormLayer.parseFromCUDACONVNET(ld)
-
-  def append_layers_from_dict(self, layers):
-    for l in layers:
-      layer = self.makeLayerFromFASTNET(l)
-      if layer:
-        self.append_layer(layer)
-
-  def autoAddLayerForCifar10(self, n_out):
-    conv1 = ConvLayer('conv1', filter_shape=(64, 3, 5, 5), image_shape=self.imgShapes[-1],
-        padding=2, stride=1, initW=0.0001, epsW=0.001, epsB=0.002)
-    self.append_layer(conv1)
-
-    conv1_relu = NeuronLayer('conv1_neuron', self.imgShapes[-1], type='relu', e=0.0)
-    self.append_layer(conv1_relu)
-
-    pool1 = MaxPoolLayer('pool1', self.imgShapes[-1], poolSize=3, stride=2, start=0)
-    self.append_layer(pool1)
-
-    rnorm1 = ResponseNormLayer('rnorm1', self.imgShapes[-1], pow=0.75, scale=0.001, size=9)
-    self.append_layer(rnorm1)
-
-    conv2 = ConvLayer('conv2', filter_shape=(64, 64, 5, 5) , image_shape=self.imgShapes[-1],
-        padding=2, stride=1, initW=0.01, epsW=0.001, epsB=0.002)
-    self.append_layer(conv2)
-
-    conv2_relu = NeuronLayer('conv2_neuron', self.imgShapes[-1], type='relu', e=0.0)
-    self.append_layer(conv2_relu)
-
-    rnorm2 = ResponseNormLayer('rnorm2', self.imgShapes[-1], pow=0.75, scale=0.001, size=9)
-    self.append_layer(rnorm2)
-
-    pool2 = MaxPoolLayer('pool2', self.imgShapes[-1], poolSize=3, start=0, stride=2)
-    self.append_layer(pool2)
-
-    fc1 = FCLayer('fc', self.inputShapes[-1], n_out)
-    self.append_layer(fc1)
-
-    softmax1 = SoftmaxLayer('softmax', self.inputShapes[-1])
-    self.append_layer(softmax1)
 
   def add_parameterized_layers(self, n_filters=None, size_filters=None, fc_nout=[10]):
     if n_filters is None or n_filters == []:
@@ -451,3 +359,43 @@ class AdaptiveFastNet(FastNet):
 
   def get_report(self):
     return self.adjust_info
+
+
+def add_cifar10_layers(net, n_out):
+  conv1 = ConvLayer('conv1', filter_shape=(64, 3, 5, 5), image_shape=net.imgShapes[-1],
+      padding=2, stride=1, initW=0.0001, epsW=0.001, epsB=0.002)
+  net.append_layer(conv1)
+
+  conv1_relu = NeuronLayer('conv1_neuron', net.imgShapes[-1], type='relu', e=0.0)
+  net.append_layer(conv1_relu)
+
+  pool1 = MaxPoolLayer('pool1', net.imgShapes[-1], poolSize=3, stride=2, start=0)
+  net.append_layer(pool1)
+
+  rnorm1 = ResponseNormLayer('rnorm1', net.imgShapes[-1], pow=0.75, scale=0.001, size=9)
+  net.append_layer(rnorm1)
+
+  conv2 = ConvLayer('conv2', filter_shape=(64, 64, 5, 5) , image_shape=net.imgShapes[-1],
+      padding=2, stride=1, initW=0.01, epsW=0.001, epsB=0.002)
+  net.append_layer(conv2)
+
+  conv2_relu = NeuronLayer('conv2_neuron', net.imgShapes[-1], type='relu', e=0.0)
+  net.append_layer(conv2_relu)
+
+  rnorm2 = ResponseNormLayer('rnorm2', net.imgShapes[-1], pow=0.75, scale=0.001, size=9)
+  net.append_layer(rnorm2)
+
+  pool2 = MaxPoolLayer('pool2', net.imgShapes[-1], poolSize=3, start=0, stride=2)
+  net.append_layer(pool2)
+
+  fc1 = FCLayer('fc', net.inputShapes[-1], n_out)
+  net.append_layer(fc1)
+
+  softmax1 = SoftmaxLayer('softmax', net.inputShapes[-1])
+  net.append_layer(softmax1)
+  
+  
+def add_fastnet_layers(net, model):
+  builder = FastNetBuilder()
+  for layer in model:
+    net.append_layer(builder.make_layer(net, layer))

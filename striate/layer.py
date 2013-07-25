@@ -173,58 +173,6 @@ class ConvLayer(WeightedLayer):
     WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
 
-  @staticmethod
-  def parseFromFASTNET(ld):
-    numFilter = ld['numFilter']
-    filterSize = ld['filterSize']
-    numColor = ld['numColor']
-    padding = ld['padding']
-    stride = ld['stride']
-    initW = ld['initW'] if 'initW' in ld else 0.01
-    initB = ld['initB'] if 'initB' in ld else 0.00
-    epsW = ld['epsW'] if 'epsW' in ld else 0.001
-    epsB = ld['epsB'] if 'epsB' in ld else 0.002
-    momW = ld['momW'] if 'momW' in ld else 0.0
-    momB = ld['momB'] if 'momB' in ld else 0.0
-    wc = ld['wc'] if 'wc' in ld else 0.0
-    bias = ld['bias'] if 'bias' in ld else None
-    weight = ld['weight'] if 'weight' in ld else None
-    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
-    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
-    name = ld['name']
-    filter_shape = (numFilter, numColor, filterSize, filterSize)
-    img_shape = ld['imgShape']
-    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
-                     momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
-    return cv
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    print ld.keys()
-    numFilter = ld['filters']
-    filterSize = ld['filterSize'][0]
-    numColor = ld['channels'][0]
-    padding = -ld['padding'][0]
-    stride = ld['stride'][0]
-    initW = ld['initW'][0]
-    initB = ld['initB']
-    name = ld['name']
-    epsW = ld['epsW'][0]
-    epsB = ld['epsB']
-
-    momW = ld['momW'][0]
-    momB = ld['momB']
-
-    wc = ld['wc'][0]
-    imgSize = ld['imgSize']
-
-    bias = ld['biases']
-    weight = ld['weights'][0]
-
-    filter_shape = (numFilter, numColor, filterSize, filterSize)
-    img_shape = ld['imgShape']
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW
-        = momW, momB = momB, wc = wc, bias = bias, weight = weight)
 
   def dump(self):
     d = WeightedLayer.dump(self)
@@ -279,25 +227,6 @@ class MaxPoolLayer(Layer):
 
     self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
 
-  @staticmethod
-  def parseFromFASTNET(ld):
-    stride = ld['stride']
-    start = ld['start']
-    poolSize = ld['poolSize']
-    img_shape = ld['imgShape']
-    name = ld['name']
-    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    stride = ld['stride']
-    start = ld['start']
-    poolSize = ld['sizeX']
-    img_shape = ld['imgShape']
-    name = ld['name']
-    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
-
-
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
     return self.outputShape
@@ -322,20 +251,6 @@ class ResponseNormLayer(Layer):
     self.size = size
     self.scale = scale
     self.denom = None
-
-  @staticmethod
-  def parseFromFASTNET(ld):
-    name = ld['name']
-    pow = ld['pow']
-    size = ld['size']
-    scale = ld['scale']
-    image_shape = ld['imgShape']
-    return ResponseNormLayer(name, image_shape, pow, size, scale)
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    return ResponseNormLayer.parseFromFASTNET(ld)
-
 
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
@@ -364,16 +279,6 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale)
     self.type = 'cmrnorm'
     self.blocked = blocked
-
-  @staticmethod
-  def parseFromFASTNET(ld):
-    name = ld['name']
-    pow = ld['pow']
-    size = ld['size']
-    scale = ld['scale']
-    image_shape = ld['imgShape']
-    blocked = bool(ld['blocked']) if 'blocked' in ld else False
-    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
@@ -406,52 +311,6 @@ class FCLayer(WeightedLayer):
     self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
-
-
-  @staticmethod
-  def parseFromFASTNET(ld):
-    epsB = ld['epsB'] if 'epsB' in ld else 0.002
-    epsW = ld['epsW'] if 'epsW' in ld else 0.001
-    initB = ld['initB'] if 'initB' in ld else 0.00
-    initW = ld['initW'] if 'initW' in ld else 0.01
-    momB = ld['momB'] if 'momB' in ld else 0.0
-    momW = ld['momW'] if 'momW' in ld else 0.0
-    wc = ld['wc'] if 'wc' in ld else 0.0
-    dropRate = ld['dropout'] if 'dropout' in ld else 0.0
-
-    n_out = ld['outputSize']
-    bias = ld['bias'] if 'bias' in ld else None
-    weight = ld['weight'] if 'weight' in ld else None
-    if isinstance(weight, list):
-      weight = np.concatenate(weight)
-
-    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
-    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
-    name = ld['name']
-    input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
-        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr)
-
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    epsB = ld['epsB']
-    epsW = ld['epsW'][0]
-    initB = ld['initB']
-    initW = ld['initW'][0]
-    momB = ld['momB']
-    momW = ld['momW'][0]
-
-    wc = ld['wc'][0]
-    dropRate = ld['dropRate']
-
-    n_out = ld['outputs']
-    bias = ld['biases'].transpose()
-    weight = ld['weights'][0].transpose()
-    name = ld['name']
-    input_shape = ld['inputShape']
-    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
-        = wc, dropRate = dropRate, weight = weight, bias = bias)
 
 
   def dump(self):
@@ -507,16 +366,6 @@ class SoftmaxLayer(Layer):
     self.outputSize = self.inputSize
     self.cost = gpuarray.zeros((self.batchSize, 1), dtype=np.float32)
     self.batchCorrect = 0
-
-  @staticmethod
-  def parseFromFASTNET(ld):
-    name = ld['name']
-    input_shape = ld['inputShape']
-    return SoftmaxLayer(name, input_shape)
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    return SoftmaxLayer.parseFromFASTNET(ld)
 
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.outputSize, 1, 1)
@@ -589,8 +438,6 @@ class ReluNeuron(Neuron):
     d['e'] = self.e
     return d
 
-
-
 class TanhNeuron(Neuron):
   def __init__(self, a, b):
     Neuron.__init__(self, 'tanh')
@@ -618,39 +465,6 @@ class NeuronLayer(Layer):
       self.neuron = TanhNeuron(a, b)
     self.batchSize, self.numColor, self.imgSize, _ = image_shape
 
-  @staticmethod
-  def parseFromFASTNET(ld):
-    name = ld['name']
-    img_shape = ld['imgShape']
-    if ld['neuron'] == 'relu':
-      e = ld['e']
-      return NeuronLayer(name, img_shape, type='relu', e=e)
-
-    if ld['neuron'] == 'tanh':
-      a = ld['a']
-      b = ld['b']
-      return NeuronLayer(name, imag_shape, type='tanh', a=a, b=b)
-
-    assert False, 'No implementation for the neuron type' + ld['neuron']['type']
-
-
-  @staticmethod
-  def parseFromCUDACONVNET(ld):
-    if ld['neuron']['type'] == 'relu':
-      img_shape = ld['imgShape']
-      name = ld['name']
-      #e = ld['neuron']['e']
-      return NeuronLayer(name, img_shape, type='relu')
-    if ld['neuron']['type'] == 'tanh':
-      name = ld['name']
-      img_shape = ld['imgShape']
-      a = ld['neuron']['a']
-      b = ld['neuron']['b']
-      return NeuronLayer(name, img_shape, 'tanh', a=a, b=b)
-
-    assert False, 'No implementation for the neuron type' + ld['neuron']['type']
-
-
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
     return self.outputShape
@@ -668,3 +482,188 @@ class NeuronLayer(Layer):
     for k, v in self.neuron.dump().items():
       d[k] = v
     return d
+
+
+
+class Builder(object):
+  def make_layer(self, net, ld):
+    ld['imgShape'] = net.imgShapes[-1]
+    ld['inputShape'] = net.inputShapes[-1]
+    
+    if ld['type'] == 'conv': return self.conv_layer(ld)
+    elif ld['type'] == 'pool': return self.pool_layer(ld)
+    elif ld['type'] == 'neuron': return self.neuron_layer(ld)
+    elif ld['type'] == 'fc': return self.fc_layer(ld)
+    elif ld['type'] == 'softmax': return self.softmax_layer(ld)
+    elif ld['type'] == 'rnorm': return self.rnorm_layer(ld)
+    elif ld['type'] == 'cmrnorm': return self.crm_layer(ld)
+    else:
+      raise Exception, 'Unknown layer %s' % ld['type']
+  
+
+class FastNetBuilder(Builder):
+  def conv_layer(self, ld):
+    numFilter = ld['numFilter']
+    filterSize = ld['filterSize']
+    numColor = ld['numColor']
+    padding = ld['padding']
+    stride = ld['stride']
+    initW = ld['initW'] if 'initW' in ld else 0.01
+    initB = ld['initB'] if 'initB' in ld else 0.00
+    epsW = ld['epsW'] if 'epsW' in ld else 0.001
+    epsB = ld['epsB'] if 'epsB' in ld else 0.002
+    momW = ld['momW'] if 'momW' in ld else 0.0
+    momB = ld['momB'] if 'momB' in ld else 0.0
+    wc = ld['wc'] if 'wc' in ld else 0.0
+    bias = ld['bias'] if 'bias' in ld else None
+    weight = ld['weight'] if 'weight' in ld else None
+    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
+    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
+    name = ld['name']
+    filter_shape = (numFilter, numColor, filterSize, filterSize)
+    img_shape = ld['imgShape']
+    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
+                     momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
+    return cv
+  
+  def pool_layer(self, ld):
+    stride = ld['stride']
+    start = ld['start']
+    poolSize = ld['poolSize']
+    img_shape = ld['imgShape']
+    name = ld['name']
+    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+
+  def crm_layer(self, ld):
+    name = ld['name']
+    pow = ld['pow']
+    size = ld['size']
+    scale = ld['scale']
+    image_shape = ld['imgShape']
+    blocked = bool(ld['blocked']) if 'blocked' in ld else False
+    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
+  
+  def softmax_layer(self, ld):
+    name = ld['name']
+    input_shape = ld['inputShape']
+    return SoftmaxLayer(name, input_shape)
+
+  def neuron_layer(self, ld):
+    name = ld['name']
+    img_shape = ld['imgShape']
+    if ld['neuron'] == 'relu':
+      e = ld['e']
+      return NeuronLayer(name, img_shape, type='relu', e=e)
+
+    if ld['neuron'] == 'tanh':
+      a = ld['a']
+      b = ld['b']
+      return NeuronLayer(name, img_shape, type='tanh', a=a, b=b)
+
+    assert False, 'No implementation for the neuron type' + ld['neuron']['type']
+
+  def rnorm_layer(self, ld):
+    name = ld['name']
+    pow = ld['pow']
+    size = ld['size']
+    scale = ld['scale']
+    image_shape = ld['imgShape']
+    return ResponseNormLayer(name, image_shape, pow, size, scale)
+
+
+  def fc_layer(self, ld):
+    epsB = ld['epsB'] if 'epsB' in ld else 0.002
+    epsW = ld['epsW'] if 'epsW' in ld else 0.001
+    initB = ld['initB'] if 'initB' in ld else 0.00
+    initW = ld['initW'] if 'initW' in ld else 0.01
+    momB = ld['momB'] if 'momB' in ld else 0.0
+    momW = ld['momW'] if 'momW' in ld else 0.0
+    wc = ld['wc'] if 'wc' in ld else 0.0
+    dropRate = ld['dropout'] if 'dropout' in ld else 0.0
+
+    n_out = ld['outputSize']
+    bias = ld['bias'] if 'bias' in ld else None
+    weight = ld['weight'] if 'weight' in ld else None
+    if isinstance(weight, list):
+      weight = np.concatenate(weight)
+
+    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
+    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
+    name = ld['name']
+    input_shape = ld['inputShape']
+    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
+        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr)
+
+
+
+
+class CudaconvNetBuilder(FastNetBuilder):
+  def conv_layer(self, ld):
+    numFilter = ld['filters']
+    filterSize = ld['filterSize'][0]
+    numColor = ld['channels'][0]
+    padding = -ld['padding'][0]
+    stride = ld['stride'][0]
+    initW = ld['initW'][0]
+    initB = ld['initB']
+    name = ld['name']
+    epsW = ld['epsW'][0]
+    epsB = ld['epsB']
+
+    momW = ld['momW'][0]
+    momB = ld['momB']
+
+    wc = ld['wc'][0]
+    imgSize = ld['imgSize']
+
+    bias = ld['biases']
+    weight = ld['weights'][0]
+
+    filter_shape = (numFilter, numColor, filterSize, filterSize)
+    img_shape = ld['imgShape']
+    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW
+        = momW, momB = momB, wc = wc, bias = bias, weight = weight)
+
+  def pool_layer(self, ld):
+    stride = ld['stride']
+    start = ld['start']
+    poolSize = ld['sizeX']
+    img_shape = ld['imgShape']
+    name = ld['name']
+    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+
+  def neuron_layer(self, ld):
+    if ld['neuron']['type'] == 'relu':
+      img_shape = ld['imgShape']
+      name = ld['name']
+      #e = ld['neuron']['e']
+      return NeuronLayer(name, img_shape, type='relu')
+    if ld['neuron']['type'] == 'tanh':
+      name = ld['name']
+      img_shape = ld['imgShape']
+      a = ld['neuron']['a']
+      b = ld['neuron']['b']
+      return NeuronLayer(name, img_shape, 'tanh', a=a, b=b)
+
+    assert False, 'No implementation for the neuron type' + ld['neuron']['type']
+
+  
+  def fc_layer(self, ld):
+    epsB = ld['epsB']
+    epsW = ld['epsW'][0]
+    initB = ld['initB']
+    initW = ld['initW'][0]
+    momB = ld['momB']
+    momW = ld['momW'][0]
+
+    wc = ld['wc'][0]
+    dropRate = ld['dropRate']
+
+    n_out = ld['outputs']
+    bias = ld['biases'].transpose()
+    weight = ld['weights'][0].transpose()
+    name = ld['name']
+    input_shape = ld['inputShape']
+    return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
+        = wc, dropRate = dropRate, weight = weight, bias = bias)
+
