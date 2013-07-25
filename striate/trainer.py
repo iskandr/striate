@@ -445,6 +445,8 @@ class ImageNetCatewisedTrainer(Trainer):
       fc['outputSize'] = cate
       fc['weight'] = None
       fc['bias'] = None
+      fc['weightIncr'] = None
+      fc['biasIncr'] = None
 
       self.learning_rate = self.learning_rate_list[i]
       self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
@@ -453,6 +455,27 @@ class ImageNetCatewisedTrainer(Trainer):
       Trainer.train(self)
 
 
+
+
+class ImageNetCateGroupTrainer(Trainer):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
+      test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, num_group,
+      initModel):
+
+    self.num_group = num_group
+    layers = initModel
+    fc = layers[-2]
+    fc['outputSize'] = self.num_group
+
+    Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
+        test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
+        num_group, initModel = initModel)
+
+
+  def init_data_provider(self):
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.num_group, self.train_range)
+    self.test_dp = dp(self.data_dir, self.num_group, self.test_range)
 
 
 if __name__ == '__main__':
@@ -464,9 +487,9 @@ if __name__ == '__main__':
   # parameters for imagenet
   data_dir = '/ssd/nn-data/imagenet/'
   param_file = 'striate/imagenet.cfg'
-  data_provider = 'imagenet'
-  #train_range = range(1, 1200)
-  #test_range = range(1200, 1300)
+  data_provider = 'imagenetcategroup'
+  #train_range = range(1, 200)
+  #test_range = range(200, 400)
   train_range = range(1, 1200)
   test_range = range(1200, 1300)
   save_freq = test_freq = 100
@@ -487,18 +510,27 @@ if __name__ == '__main__':
   checkpoint_dir = './striate/checkpoint/'
 
   batch_size = 128
-  num_epoch = [10, 10, 10, 50]
-  range_list = [100, 200, 500, 1000]
 
+  #for category-wised trainer
+  #num_epoch = [10, 10, 10, 50]
+  #range_list = [100, 200, 500, 1000]
+  #learning_rate = [0.1, 0.1, 0.05, 0.02]
+
+  # for category group trainer
+  num_epoch = 10
+  num_group = 10
+  learning_rate = 0.1
   image_color = 3
-  learning_rate = [0.1, 0.1, 0.05, 0.02]
 
 
   model = Parser(param_file).get_result()
   #model = util.load('./striate/checkpoint/test3-46.155')
   #model = util.load('./striate/checkpoint/test0-1.457')
 
-  trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
+  #trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
+  #                  test_range, test_freq, save_freq, batch_size, num_epoch,
+  #                  image_size, image_color, learning_rate,initModel = model, range_list = range_list)
+  trainer = ImageNetCateGroupTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
                     test_range, test_freq, save_freq, batch_size, num_epoch,
-                    image_size, image_color, learning_rate,initModel = model, range_list = range_list)
+                    image_size, image_color, learning_rate, num_group, initModel = model)
   trainer.train()

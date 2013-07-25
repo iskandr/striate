@@ -27,7 +27,7 @@ def join(lsts):
   return out
 
 
-BatchData = collections.namedtuple('BatchData', 
+BatchData = collections.namedtuple('BatchData',
                                    ['data', 'labels', 'epoch', 'batchnum'])
 
 
@@ -85,8 +85,8 @@ class DataProvider(object):
       sys.exit(-1)
     else:
       return dp_dict[name]
-    
-    
+
+
 class ParallelDataProvider(DataProvider):
   def __init__(self, data_dir='.', batch_range=None):
     DataProvider.__init__(self, data_dir, batch_range)
@@ -119,19 +119,19 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.border_size = 16
     self.inner_size = 224
     self.batch_size = batch_size
-    
+
     # self.multiview = dp_params['multiview_test'] and test
     self.multiview = 0
     self.num_views = 5 * 2
     self.data_mult = self.num_views if self.multiview else 1
 
     self.buffer_idx = 0
-    
+
     dirs = glob.glob(data_dir + '/n*')
     synid_to_dir = {}
     for d in dirs:
       synid_to_dir[basename(d)[1:]] = d
-    
+
     if category_range is None:
       cat_dirs = dirs
     else:
@@ -148,26 +148,26 @@ class ImageNetDataProvider(ParallelDataProvider):
               if i in batch_dict]
       self.images.extend(imgs)
     self.images = np.array(self.images)
-    
+
     # build index vector into 'images' and split into groups of batch-size
     image_index = np.arange(len(self.images))
     np.random.shuffle(image_index)
-    
-    self.batches = np.array_split(image_index, 
+
+    self.batches = np.array_split(image_index,
                                   util.divup(len(self.images), batch_size))
-    
+
     self.batch_range = range(len(self.batches))
-    
+
     util.log('Starting data provider with %d batches', len(self.batches))
     np.random.shuffle(self.batch_range)
-    
+
     imagemean = cPickle.loads(open(data_dir + "image-mean.pickle").read())
     self.data_mean = (imagemean['data']
         .astype(np.single)
         .T
         .reshape((3, 256, 256))[:, self.border_size:self.border_size + self.inner_size, self.border_size:self.border_size + self.inner_size]
         .reshape((self.get_data_dims(), 1)))
-  
+
 
   def __trim_borders(self, images, target):
     for idx, img in enumerate(images):
@@ -181,7 +181,7 @@ class ImageNetDataProvider(ParallelDataProvider):
   def _get_next_batch(self):
     start = time.time()
     self.get_next_index()
-    
+
     self.curr_batch = self.batch_range[self.curr_batch_index]
     if self.curr_batch_index == 0:
       self.curr_epoch += 1
@@ -206,7 +206,7 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.__trim_borders(images, cropped)
 
     load_time = time.time() - st
-  
+
     clabel = []
     # extract label from the filename
     for idx, filename in enumerate(names):
@@ -258,9 +258,9 @@ class CifarDataProvider(DataProvider):
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
     self.data = load(filename)
-    return BatchData(self.data['data'] - self.batch_meta['data_mean'], 
-                     np.array(self.data['labels']), 
-                     self.curr_epoch, 
+    return BatchData(self.data['data'] - self.batch_meta['data_mean'],
+                     np.array(self.data['labels']),
+                     self.curr_epoch,
                      self.curr_batch)
 
   def get_batch_filenames(self):
@@ -271,15 +271,31 @@ class CifarDataProvider(DataProvider):
     return sorted(list(set(int(DataProvider.BATCH_REGEX.match(n).group(1)) for n in names)))
 
 
+
+class ImageNetCateGroupDataProvider(ImageNetDataProvider):
+  TOTAL_CATEGORY = 1000
+  def __init__(self, data_dir, num_group, batch_range = None, batch_size = 128):
+    ImageNetDataProvider.__init__(self, data_dir, batch_range)
+    self.num_group = num_group
+
+  def _get_next_batch(self):
+    data = ImageNetDataProvider._get_next_batch(self)
+    labels =  data.labels / (ImageNetCateGroupDataProvider.TOTAL_CATEGORY / self.num_group)
+    labels = labels.astype(np.int).astype(np.float)
+    return BatchData( data.data, labels, data.epoch, data.batchnum)
+
+
+
+
 DataProvider.register_data_provider('cifar10', CifarDataProvider)
 DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
+DataProvider.register_data_provider('imagenetcategroup', ImageNetCateGroupDataProvider)
 
 
 if __name__ == "__main__":
   data_dir = '/ssd/nn-data/imagenet/'
-  dp = ImageNetDataProvider(data_dir, range(1, 10), category_range = range(1, 10))
+  dp = ImageNetCateGroupDataProvider(data_dir, 10, range(1200))
   # data_dir = '/hdfs/cifar/data/cifar-10-python/'
   # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
   for i in range(1):
     data = dp.get_next_batch()
-    print data.data.shape
