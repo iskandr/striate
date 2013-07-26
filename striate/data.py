@@ -274,7 +274,7 @@ class CifarDataProvider(DataProvider):
 
 class ImageNetCateGroupDataProvider(ImageNetDataProvider):
   TOTAL_CATEGORY = 1000
-  def __init__(self, data_dir, num_group, batch_range = None, batch_size = 128):
+  def __init__(self, data_dir, batch_range, num_group, batch_size = 128):
     ImageNetDataProvider.__init__(self, data_dir, batch_range)
     self.num_group = num_group
 

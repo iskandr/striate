@@ -45,7 +45,7 @@ class Trainer:
     self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd=autoInit,
                        initModel=initModel)
 
-    self.num_batch = self.curr_epoch = self.curr_batch = 0
+    self.curr_minibatch = self.num_batch = self.curr_epoch = self.curr_batch = 0
     self.train_data = None
     self.test_data = None
 
@@ -154,6 +154,7 @@ class Trainer:
         stime = time.time()
         self.net.train_batch(input, label)
         t += time.time() - stime
+        self.curr_minibatch += 1
 
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
@@ -398,17 +399,17 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 class ImageNetCatewisedTrainer(Trainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, cate_epoch, image_size, image_color, learning_rate,
+      test_freq, save_freq, batch_size, train_minibatch_list, image_size, image_color, learning_rate,
       initModel, range_list):
     # no meaning
     fake_nout = 1000
-    assert len(range_list) == len(cate_epoch) and range_list[-1] == 1000
-
+    assert len(range_list) == len(train_minibatch_list) and range_list[-1] == 1000
 
     self.init_output = range_list[0]
     self.range_list = range_list[1:]
-    num_epoch = cate_epoch[0]
-    self.cate_epoch = cate_epoch[1:]
+    fake_num_epoch = 0
+    self.num_minibatch = train_minibatch_list[0]
+    self.train_minibatch_list  = train_minibatch_list[1:]
 
     fc = initModel[-2]
     fc['outputSize'] = self.init_output
@@ -417,7 +418,7 @@ class ImageNetCatewisedTrainer(Trainer):
     self.learning_rate_list = learning_rate[1:]
 
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
-        test_range, test_freq, save_freq, batch_size, num_epoch, image_size, image_color,
+        test_range, test_freq, save_freq, batch_size, fake_num_epoch, image_size, image_color,
         self.learning_rate, fake_nout, initModel = initModel)
 
   def init_data_provider(self):
@@ -429,14 +430,17 @@ class ImageNetCatewisedTrainer(Trainer):
     self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
     self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
 
+  def check_continue_trainning(self):
+    return self.curr_minibatch <= self.num_minibatch
 
   def train(self):
     Trainer.train(self)
 
     for i, cate in enumerate(self.range_list):
       self.set_category_range(cate)
-      self.num_epoch = self.cate_epoch[i]
       self.num_batch = self.curr_epoch = self.curr_batch = 0
+      self.curr_minibatch = 0
+      self.num_minibatch = self.train_minibatch_list[i]
 
       model = load(self.checkpoint_file)
       layers = model['model_state']['layers']
@@ -459,23 +463,60 @@ class ImageNetCatewisedTrainer(Trainer):
 
 class ImageNetCateGroupTrainer(Trainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, num_group,
+      test_freq, save_freq, batch_size, train_minibatch_list, image_size, image_color, learning_rate, num_group,
       initModel):
 
-    self.num_group = num_group
+    fake_num_epoch = 0
+    self.num_minibatch = train_minibatch_list[0]
+    self.train_minibatch_list = train_minibatch_list[1:]
+    self.n_out = num_group[0]
+    self.num_group = num_group[1:]
+    self.learning_rate_list = learning_rate[1:]
+
     layers = initModel
     fc = layers[-2]
-    fc['outputSize'] = self.num_group
+    fc['outputSize'] = self.n_out
 
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-        test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-        num_group, initModel = initModel)
+        test_freq, save_freq, batch_size, fake_num_epoch, image_size, image_color, learning_rate[0],
+        num_group[0], initModel = initModel)
 
+
+  def set_num_group(self, n):
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.train_range, n)
+    self.test_dp = dp(self.data_dir, self.test_range, n)
 
   def init_data_provider(self):
-    dp = DataProvider.get_by_name(self.data_provider)
-    self.train_dp = dp(self.data_dir, self.num_group, self.train_range)
-    self.test_dp = dp(self.data_dir, self.num_group, self.test_range)
+    self.set_num_group(self.n_out)
+
+  def check_continue_trainning(self):
+    return self.curr_minibatch <= self.num_minibatch
+
+  def train(self):
+    Trainer.train(self)
+
+    for i, group in enumerate(self.num_group):
+      self.set_num_group(group)
+      self.num_batch = self.curr_epoch = self.curr_batch = 0
+      self.curr_minibatch = 0
+      self.num_minibatch = self.train_minibatch_list[i]
+
+      model = load(self.checkpoint_file)
+      layers = model['model_state']['layers']
+
+      fc = layers[-2]
+      fc['outputSize'] = group
+      fc['weight'] = None
+      fc['bias'] = None
+      fc['weightIncr'] = None
+      fc['biasIncr'] = None
+
+      self.learning_rate = self.learning_rate_list[i]
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+
+      self.net.clear_weight_incr()
+      Trainer.train(self)
 
 
 if __name__ == '__main__':
@@ -509,28 +550,27 @@ if __name__ == '__main__':
 
   checkpoint_dir = './striate/checkpoint/'
 
+  image_color = 3
   batch_size = 128
 
   #for category-wised trainer
-  #num_epoch = [10, 10, 10, 50]
-  #range_list = [100, 200, 500, 1000]
-  #learning_rate = [0.1, 0.1, 0.05, 0.02]
+  #train_minibatch_list = [30, 20000]
+  #range_list = [100, 1000]
+  #learning_rate = [0.1, 0.05]
 
   # for category group trainer
-  num_epoch = 10
-  num_group = 10
-  learning_rate = 0.1
-  image_color = 3
-
+  train_minibatch_list = [30, 2000]
+  num_group = [100, 1000]
+  learning_rate = [0.1, 0.05]
 
   model = Parser(param_file).get_result()
   #model = util.load('./striate/checkpoint/test3-46.155')
   #model = util.load('./striate/checkpoint/test0-1.457')
 
   #trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-  #                  test_range, test_freq, save_freq, batch_size, num_epoch,
+  #                  test_range, test_freq, save_freq, batch_size, num_minibatch,
   #                  image_size, image_color, learning_rate,initModel = model, range_list = range_list)
   trainer = ImageNetCateGroupTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-                    test_range, test_freq, save_freq, batch_size, num_epoch,
+                    test_range, test_freq, save_freq, batch_size, train_minibatch_list,
                     image_size, image_color, learning_rate, num_group, initModel = model)
   trainer.train()
