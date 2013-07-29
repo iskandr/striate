@@ -341,8 +341,6 @@ class FCLayer(WeightedLayer):
         output *= self.dropRate
     else:
       if self.dropRate > 0.0:
-        import sys
-        print >> sys.stderr, 'droprate is not 0'
         self.dropMask = gpuarray.to_gpu(np.random.rand(*output.shape).astype(np.float32))
         bigger_than_scaler(self.dropMask, self.dropRate)
         gpu_copy_to(output, output * self.dropMask)
@@ -486,6 +484,21 @@ class NeuronLayer(Layer):
 
 
 class Builder(object):
+  valid_dic = {}
+  @staticmethod
+  def set_val(ld, name, default = None):
+    val  = ld.get(name, default)
+    Builder.valid_dic[name] = 1
+    return val
+
+  @staticmethod
+  def check_opts(ld):
+    for k in Builder.valid_dic:
+      if k not in ld:
+        raise Exception, 'Unknown key %s' % k
+    else:
+      Builder.valid_dic = {}
+
   def make_layer(self, net, ld):
     ld['imgShape'] = net.imgShapes[-1]
     ld['inputShape'] = net.inputShapes[-1]
@@ -502,95 +515,96 @@ class Builder(object):
   
 
 class FastNetBuilder(Builder):
+
   def conv_layer(self, ld):
-    numFilter = ld['numFilter']
-    filterSize = ld['filterSize']
-    numColor = ld['numColor']
-    padding = ld['padding']
-    stride = ld['stride']
-    initW = ld['initW'] if 'initW' in ld else 0.01
-    initB = ld['initB'] if 'initB' in ld else 0.00
-    epsW = ld['epsW'] if 'epsW' in ld else 0.001
-    epsB = ld['epsB'] if 'epsB' in ld else 0.002
-    momW = ld['momW'] if 'momW' in ld else 0.0
-    momB = ld['momB'] if 'momB' in ld else 0.0
-    wc = ld['wc'] if 'wc' in ld else 0.0
-    bias = ld['bias'] if 'bias' in ld else None
-    weight = ld['weight'] if 'weight' in ld else None
-    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
-    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
-    name = ld['name']
+    numFilter = Builder.set_val(ld, 'numFilter')
+    filterSize = Builder.set_val(ld, 'filterSize')
+    numColor = Builder.set_val(ld, 'numColor')
+    padding = Builder.set_val(ld, 'padding')
+    stride = Builder.set_val(ld, 'stride')
+    initW = Builder.set_val(ld, 'initW', 0.01)
+    initB = Builder.set_val(ld, 'initB', 0.00)
+    epsW = Builder.set_val(ld, 'epsW', 0.001)
+    epsB = Builder.set_val(ld, 'epsB', 0.002)
+    momW = Builder.set_val(ld, 'momW', 0.0)
+    momB = Builder.set_val(ld, 'momB', 0.0)
+    wc = Builder.set_val(ld, 'wc', 0.0)
+    bias = Builder.set_val(ld, 'bias')
+    weight = Builder.set_val(ld, 'weight')
+    weightIncr = Builder.set_val(ld, 'weightIncr')
+    biasIncr = Builder.set_val(ld, 'biasIncr')
+    name = Builder.set_val(ld, 'name')
+    img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
-    img_shape = ld['imgShape']
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
                      momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
   
   def pool_layer(self, ld):
-    stride = ld['stride']
-    start = ld['start']
-    poolSize = ld['poolSize']
-    img_shape = ld['imgShape']
-    name = ld['name']
+    stride = Builder.set_val(ld, 'stride')
+    start = Builder.set_val(ld, 'start')
+    poolSize = Builder.set_val(ld, 'poolSize')
+    img_shape = Builder.set_val(ld, 'imgShape')
+    name = Builder.set_val(ld, 'name')
     return MaxPoolLayer(name, img_shape, poolSize, stride, start)
 
   def crm_layer(self, ld):
-    name = ld['name']
-    pow = ld['pow']
-    size = ld['size']
-    scale = ld['scale']
-    image_shape = ld['imgShape']
-    blocked = bool(ld['blocked']) if 'blocked' in ld else False
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld, 'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    image_shape = Builder.set_val(ld, 'imgShape')
+    blocked = bool(Builder.set_val(ld, 'blocked', default = 'False'))
     return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
   
   def softmax_layer(self, ld):
-    name = ld['name']
-    input_shape = ld['inputShape']
+    name = Builder.set_val(ld, 'name')
+    input_shape = Builder.set_val(ld, 'inputShape')
     return SoftmaxLayer(name, input_shape)
 
   def neuron_layer(self, ld):
-    name = ld['name']
-    img_shape = ld['imgShape']
+    name = Builder.set_val(ld, 'name')
+    img_shape = Builder.set_val(ld, 'imgShape')
     if ld['neuron'] == 'relu':
-      e = ld['e']
+      e = Builder.set_val(ld, 'e')
       return NeuronLayer(name, img_shape, type='relu', e=e)
 
     if ld['neuron'] == 'tanh':
-      a = ld['a']
-      b = ld['b']
+      a = Builder.set_val(ld, 'a')
+      b = Builder.set_val(ld, 'b')
       return NeuronLayer(name, img_shape, type='tanh', a=a, b=b)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
   def rnorm_layer(self, ld):
-    name = ld['name']
-    pow = ld['pow']
-    size = ld['size']
-    scale = ld['scale']
-    image_shape = ld['imgShape']
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld,'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    image_shape = Builder.set_val(ld, 'imgShape')
     return ResponseNormLayer(name, image_shape, pow, size, scale)
 
 
   def fc_layer(self, ld):
-    epsB = ld['epsB'] if 'epsB' in ld else 0.002
-    epsW = ld['epsW'] if 'epsW' in ld else 0.001
-    initB = ld['initB'] if 'initB' in ld else 0.00
-    initW = ld['initW'] if 'initW' in ld else 0.01
-    momB = ld['momB'] if 'momB' in ld else 0.0
-    momW = ld['momW'] if 'momW' in ld else 0.0
-    wc = ld['wc'] if 'wc' in ld else 0.0
-    dropRate = ld['dropout'] if 'dropout' in ld else 0.0
+    epsB = Builder.set_val(ld, 'epsB', 0.002)
+    epsW = Builder.set_val(ld ,'epsW', 0.001)
+    initB = Builder.set_val(ld, 'initB', 0.00)
+    initW = Builder.set_val(ld, 'initW', 0.01)
+    momB = Builder.set_val(ld, 'momB', 0.0)
+    momW = Builder.set_val(ld, 'momW', 0.0)
+    wc = Builder.set_val(ld, 'wc', 0.0)
+    dropRate = Builder.set_val(ld, 'dropRate', 0.0)
 
-    n_out = ld['outputSize']
-    bias = ld['bias'] if 'bias' in ld else None
-    weight = ld['weight'] if 'weight' in ld else None
-    if isinstance(weight, list):
-      weight = np.concatenate(weight)
+    n_out = Builder.set_val(ld , 'outputSize')
+    bias = Builder.set_val(ld, 'bias')
+    weight = Builder.set_val(ld, 'weight')
+    #if isinstance(weight, list):
+    #  weight = np.concatenate(weight)
 
-    weightIncr = ld['weightIncr'] if 'weightIncr' in ld else None
-    biasIncr = ld['biasIncr'] if 'biasIncr' in ld else None
-    name = ld['name']
-    input_shape = ld['inputShape']
+    weightIncr = Builder.set_val(ld, 'weightIncr')
+    biasIncr = Builder.set_val(ld, 'biasIncr')
+    name = Builder.set_val(ld, 'name')
+    input_shape = Builder.set_val(ld, 'inputShape')
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
         weight, bias, weightIncr = weightIncr, biasIncr = biasIncr)
 

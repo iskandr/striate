@@ -30,6 +30,7 @@ class Trainer:
     self.save_freq = save_freq
     self.batch_size = batch_size
     self.num_epoch = num_epoch
+    self.num_minibatch = num_epoch
     self.image_size = image_size
     self.image_color = image_color
     self.learning_rate = learning_rate
@@ -103,6 +104,7 @@ class Trainer:
     print checkpoint_file_path
     with open(checkpoint_file_path, 'w') as f:
       cPickle.dump(dic, f, protocol=-1)
+    util.log('save file finished')
 
   def get_test_error(self):
     start = time.time()
@@ -127,7 +129,8 @@ class Trainer:
 
 
   def check_continue_trainning(self):
-    return self.curr_epoch <= self.num_epoch
+    #return self.curr_epoch <= self.num_epoch
+    return self.curr_minibatch <= self.num_minibatch
 
   def check_test_data(self):
     return self.num_batch % self.test_freq == 0
@@ -528,7 +531,7 @@ if __name__ == '__main__':
   # parameters for imagenet
   data_dir = '/ssd/nn-data/imagenet/'
   param_file = 'striate/imagenet.cfg'
-  data_provider = 'imagenetcategroup'
+  data_provider = 'imagenet'
   #train_range = range(1, 200)
   #test_range = range(200, 400)
   train_range = range(1, 1200)
@@ -537,6 +540,8 @@ if __name__ == '__main__':
   adjust_freq = 100
   image_size = 224
   n_out = 10
+  num_minibatch = 30000
+  learning_rate = 0.1
 
 #  data_dir = '/hdfs/cifar/data/cifar-10-python/'
 #  param_file = 'striate/cifar10.cfg'
@@ -559,9 +564,9 @@ if __name__ == '__main__':
   #learning_rate = [0.1, 0.05]
 
   # for category group trainer
-  train_minibatch_list = [30, 2000]
-  num_group = [100, 1000]
-  learning_rate = [0.1, 0.05]
+  #train_minibatch_list = [10000, 20000]
+  #num_group = [100, 1000]
+  #learning_rate = [0.1, 0.05]
 
   model = Parser(param_file).get_result()
   #model = util.load('./striate/checkpoint/test3-46.155')
@@ -570,7 +575,11 @@ if __name__ == '__main__':
   #trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
   #                  test_range, test_freq, save_freq, batch_size, num_minibatch,
   #                  image_size, image_color, learning_rate,initModel = model, range_list = range_list)
-  trainer = ImageNetCateGroupTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-                    test_range, test_freq, save_freq, batch_size, train_minibatch_list,
-                    image_size, image_color, learning_rate, num_group, initModel = model)
+  util.log('start to train...')
+  #trainer = ImageNetCateGroupTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
+  #                  test_range, test_freq, save_freq, batch_size, train_minibatch_list,
+  #                  image_size, image_color, learning_rate, num_group, initModel = model)
+  trainer = Trainer(test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
+      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
+      n_out, initModel = model)
   trainer.train()
