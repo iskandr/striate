@@ -73,15 +73,26 @@ def isinteger(value):
 
 def string_to_int_list(str):
   str = str.strip()
-  if str.find('-'):
+  if str.find('-') != -1:
     f = int(str[0:str.find('-')])
-    t = int(str[str.find('-') + 1:-1])
+    t = int(str[str.find('-') + 1:])
 
     return range(f, t + 1)
+  elif str.startswith('['):
+    str = str[1:-1]
+    return [int(s) for s in str.split(', ')]
   else:
     elt = int(str)
     return [elt]
 
+def string_to_float_list(str):
+  str = str.strip()
+
+  if str.startswith('['):
+    str = str[1:-1]
+    return [float(s) for s in str.split(', ')]
+  else:
+    return [float(str)]
 
 def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   from pycuda import gpuarray

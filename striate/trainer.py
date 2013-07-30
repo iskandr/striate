@@ -14,12 +14,13 @@ import pprint
 import re
 import sys
 import time
+import argparse
 
 
 class Trainer:
   CHECKPOINT_REGEX = None
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size,
-               image_color, learning_rate, n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
+               image_color, learning_rate, auto_init=False, init_model=None, adjust_freq=1, factor=1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.data_provider = data_provider
@@ -33,7 +34,8 @@ class Trainer:
     self.image_size = image_size
     self.image_color = image_color
     self.learning_rate = learning_rate
-    self.n_out = n_out
+    # doesn't matter anymore
+    self.n_out = 10
     self.factor = factor
     self.adjust_freq = adjust_freq
     self.regex = re.compile('^test%d-(\d+)\.(\d+)$' % self.test_id)
@@ -42,8 +44,7 @@ class Trainer:
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
     self.train_outputs = []
     self.test_outputs = []
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, autoAdd=autoInit,
-                       initModel=initModel)
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, auto_init=auto_init, init_model=init_model)
 
     self.curr_minibatch = self.num_batch = self.curr_epoch = self.curr_batch = 0
     self.train_data = None
@@ -197,13 +198,13 @@ class Trainer:
 class MiniBatchTrainer(Trainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
       test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
-      n_out, autoInit=True, initModel=None, adjust_freq=1, factor=1.0):
+      init_model=None, adjust_freq=1, factor=1.0):
 
     self.num_minibatch = num_minibatch
     fake_num_epoch = 100
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
         test_range, test_freq, save_freq, batch_size, fake_num_epoch, image_size, image_color,
-        learning_rate, n_out, autoInit, initModel, adjust_freq, factor)
+        learning_rate,  init_model = init_model, adjust_freq = adjust_freq, factor = factor)
 
   def check_continue_trainning(self):
     return self.curr_minibatch <= self.num_minibatch
@@ -211,11 +212,11 @@ class MiniBatchTrainer(Trainer):
 
 class AutoStopTrainer(Trainer):
   def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out,
-      auto_init=True, initModel=None, auto_stop_alg='smooth'):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
+      auto_init=True, init_model=None, auto_stop_alg='smooth'):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, auto_init,
-        initModel=initModel)
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, auto_init,
+        init_model=init_model)
 
     self.scheduler = Scheduler.makeScheduler(auto_stop_alg, self)
 
@@ -229,11 +230,10 @@ class AutoStopTrainer(Trainer):
 
 class AdaptiveLearningRateTrainer(Trainer):
   def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, initModel=
-      None, adjust_freq=10, factor=[1.0]):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, init_model= None, adjust_freq=10, factor=[1.0]):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_out, adjust_freq = adjust_freq,
-        initModel=initModel, factor=factor, autoInit=False)
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,  adjust_freq = adjust_freq,
+        init_model=init_model, factor=factor, autoInit=False)
     self.train_data = self.train_dp.get_next_batch()
     batch = self.train_data.batchnum
 
@@ -316,13 +316,13 @@ class LayerwisedTrainer(AutoStopTrainer):
 
 class ImageNetLayerwisedTrainer(AutoStopTrainer):
   def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, params):
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,  params):
 
     self.origin_test_range = test_range
     if len(test_range) != 1:
       test_range = [test_range[0]]
     AutoStopTrainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, n_output, False)
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, False)
 
     self.conv_params = []
     self.fc_params = []
@@ -415,25 +415,24 @@ class ImageNetLayerwisedTrainer(AutoStopTrainer):
 
 class ImageNetCatewisedTrainer(MiniBatchTrainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, train_minibatch_list, image_size, image_color, learning_rate,
-      initModel, range_list):
+      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
+      init_model, num_caterange_list, adjust_freq = 100, factor = 1.0):
     # no meaning
-    fake_nout = 1000
-    assert len(range_list) == len(train_minibatch_list) and range_list[-1] == 1000
+    assert len(num_caterange_list) == len(num_minibatch) and num_caterange_list[-1] == 1000
 
-    self.init_output = range_list[0]
-    self.range_list = range_list[1:]
-    self.train_minibatch_list  = train_minibatch_list[1:]
+    self.init_output = num_caterange_list[0]
+    self.range_list = num_caterange_list[1:]
+    self.train_minibatch_list  = num_minibatch[1:]
 
-    fc = initModel[-2]
+    fc = init_model[-2]
     fc['outputSize'] = self.init_output
 
     self.learning_rate = learning_rate[0]
     self.learning_rate_list = learning_rate[1:]
 
     MiniBatchTrainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
-        test_range, test_freq, save_freq, batch_size, train_minibatch_list[0], image_size, image_color,
-        self.learning_rate, fake_nout, initModel = initModel)
+        test_range, test_freq, save_freq, batch_size, num_minibatch[0], image_size, image_color,
+        self.learning_rate,  init_model = init_model)
 
   def init_data_provider(self):
     ''' we begin with 100 categories'''
@@ -475,21 +474,19 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
 
 class ImageNetCateGroupTrainer(MiniBatchTrainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, train_minibatch_list, image_size, image_color, learning_rate, num_group,
-      initModel):
+      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
+      num_group_list, init_model):
 
-    self.train_minibatch_list = train_minibatch_list[1:]
-    self.n_out = num_group[0]
-    self.num_group = num_group[1:]
+    self.train_minibatch_list = num_minibatch[1:]
+    self.num_group_list = num_group_list[1:]
     self.learning_rate_list = learning_rate[1:]
 
-    layers = initModel
+    layers = init_model
     fc = layers[-2]
-    fc['outputSize'] = self.n_out
+    fc['outputSize'] = num_group_list[0]
 
     MiniBatchTrainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-        test_freq, save_freq, batch_size, train_minibatch_list[0], image_size, image_color, learning_rate[0],
-        num_group[0], initModel = initModel)
+        test_freq, save_freq, batch_size, num_minibatch[0], image_size, image_color, learning_rate[0], init_model = init_model)
 
 
   def set_num_group(self, n):
@@ -503,7 +500,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
   def train(self):
     MiniBatchTrainer.train(self)
 
-    for i, group in enumerate(self.num_group):
+    for i, group in enumerate(self.num_group_list):
       self.set_num_group(group)
       self.num_batch = self.curr_epoch = self.curr_batch = 0
       self.curr_minibatch = 0
@@ -526,63 +523,105 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
       MiniBatchTrainer.train(self)
 
 
+
+def get_trainer_by_name(name, param_dict, rest_args):
+  if name == 'normal':
+    param_dict['num_epoch'] = args.num_epoch
+    return Trainer(**param_dict)
+
+  num_minibatch = util.string_to_int_list(args.num_minibatch)
+  if len(num_minibatch) == 1:
+    param_dict['num_minibatch'] = num_minibatch[0]
+  else:
+    param_dict['num_minibatch'] = num_minibatch
+
+  if name == 'minibatch':
+    return MiniBatchTrainer(**param_dict)
+
+  if name == 'catewise':
+    param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
+    return ImageNetCatewisedTrainer(**param_dict)
+
+  if name == 'categroup':
+    param_dict['num_group_list'] = util.string_to_int_list(args.num_group_list)
+    return ImageNetCateGroupTrainer(**param_dict)
+
+
 if __name__ == '__main__':
-  test_des_file = './testdes'
-  factor = [1.5, 1.3, 1.2, 1.1, 1.05, 0.95, 0.9, 0.8, 0.75, 0.66]
-  test_id = int(sys.argv[1])
-  description = 'first try with momentum'
 
-  # parameters for imagenet
-  data_dir = '/ssd/nn-data/imagenet/'
-  param_file = 'striate/imagenet.cfg'
-  data_provider = 'imagenet'
-  train_range = range(1, 1200)
-  test_range = range(1200, 1300)
-  save_freq = test_freq = 100
-  adjust_freq = 100
-  image_size = 224
-  n_out = 1000
-  num_epoch = 30
-  num_minibatch = 30000
-  learning_rate = 0.1
+  parser = argparse.ArgumentParser()
+  parser.add_argument('--test_id', help = 'Test Id', default = None, type = int)
+  parser.add_argument('--data_dir', help = 'The directory that data stored')
+  parser.add_argument('--param_file', help = 'The param_file or checkpoint file')
+  parser.add_argument('--data_provider', help = 'The data provider', choices =['cifar10','imagenet', 'imagenetcategroup'])
+  parser.add_argument('--train_range', help = 'The range of the train set')
+  parser.add_argument('--test_range', help = 'THe range of the test set')
+  parser.add_argument('--save_freq', help = 'How often should I save the checkpoint file', default = 100, type = int)
+  parser.add_argument('--test_freq', help = 'How often should I test the model', default = 100, type = int)
+  parser.add_argument('--adjust_freq', help = 'How often should I adjust the learning rate', default = 100, type = int)
+  parser.add_argument('--factor', help = 'The factor used to adjust the learning rate', default ='1.0')
+  parser.add_argument('--learning_rate' , help = 'The scale learning rate', default = '0.1')
+  parser.add_argument('--batch_size', help = 'The size of batch', default = 128, type = int)
+  parser.add_argument('--checkpoint_dir', help = 'The directory to save checkpoint file')
 
-#  data_dir = '/hdfs/cifar/data/cifar-10-python/'
-#  param_file = 'striate/cifar10.cfg'
-#  train_range = range(1, 41)
-#  test_range = range(41, 49)
-#  data_provider = 'cifar10'
-#  save_freq = test_freq = 20
-#  adjust_freq = 1
-#  image_size = 32
-#  n_out = 10
+  parser.add_argument('--trainer', help = 'The type of the trainer', default = 'normal', choices =
+      ['normal', 'catewise', 'categroup', 'minibatch'])
 
-  checkpoint_dir = './striate/checkpoint/'
 
-  image_color = 3
-  batch_size = 128
+  # extra argument
+  extra_argument = ['num_group_list', 'num_caterange_list', 'loading_file', 'num_epoch', 'num_minibatch']
+  parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
+  parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
+  parser.add_argument('--loading_file', help = 'The checpoint file you want to use to continue your train', )
+  parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
+  parser.add_argument('--num_minibatch', help = 'The number of minibatch you want to train(num*1000)')
 
-  #for category-wised trainer
-  #train_minibatch_list = [10000 , 20000]
-  #range_list = [100, 1000]
-  #learning_rate = [0.1, 0.05]
+  args = parser.parse_args()
 
-  # for category group trainer
-  #train_minibatch_list = [10000, 20000]
-  #num_group = [100, 1000]
-  #learning_rate = [0.1, 0.05]
+  for a in [att for att in dir(args) if not att.startswith('__')]:
+    if not getattr(args, a) and a not in extra_argument:
+      assert False, 'You have to specify a value of %s' % a
 
-  model = Parser(param_file).get_result()
-  #model = util.load('./striate/checkpoint/test3-46.155')
-  #model = util.load('./striate/checkpoint/test0-1.457')
 
+  param_dict = {}
+  param_dict['image_color'] = 3
+  param_dict['test_id'] = args.test_id
+  param_dict['data_dir'] = args.data_dir
+  param_dict['data_provider'] = args.data_provider
+  if args.data_provider.startswith('imagenet'):
+    param_dict['image_size'] = 224
+  elif args.data_provider.startswith('cifar'):
+    param_dict['image_size'] = 32
+  else:
+    assert False, 'Unknown data_provider %s' % data_provider
+  param_dict['train_range'] = util.string_to_int_list(args.train_range)
+  param_dict['test_range'] = util.string_to_int_list(args.test_range)
+  param_dict['save_freq'] = args.save_freq
+  param_dict['test_freq'] = args.test_freq
+  param_dict['adjust_freq'] = args.adjust_freq
+  factor = util.string_to_float_list(args.factor)
+  if len(factor) == 1:
+    param_dict['factor'] = factor[0]
+  else:
+    param_dict['factor'] = factor
+
+
+  learning_rate = util.string_to_float_list(args.learning_rate)
+  if len(learning_rate) == 1:
+    param_dict['learning_rate'] = learning_rate[0]
+  else:
+    param_dict['learning_rate'] = learning_rate
+
+  param_dict['batch_size'] = args.batch_size
+  param_dict['checkpoint_dir'] = args.checkpoint_dir
+  trainer = args.trainer
+
+
+  if not args.loading_file:
+    param_dict['init_model'] = Parser(args.param_file).get_result()
+  else:
+    param_dict['init_model'] = util.load(args.loading_file)
+
+  trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
-  #trainer = ImageNetCatewisedTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-  #                  test_range, test_freq, save_freq, batch_size, train_minibatch_list,
-  #                  image_size, image_color, learning_rate,initModel = model, range_list = range_list)
-  #trainer = ImageNetCateGroupTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range,
-  #                  test_range, test_freq, save_freq, batch_size, train_minibatch_list,
-  #                  image_size, image_color, learning_rate, num_group, initModel = model)
-  trainer = MiniBatchTrainer(test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
-      n_out, initModel = model)
   trainer.train()

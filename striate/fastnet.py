@@ -14,7 +14,7 @@ import sys
 # from cuda_kernel import *
 
 class FastNet(object):
-  def __init__(self, learningRate, imgShape, numOutput, initModel=None, autoAdd=True):
+  def __init__(self, learningRate, imgShape, numOutput, init_model=None, auto_init=True):
     self.learningRate = learningRate
     self.batchSize, self.numColor, self.imgSize, _ = imgShape
     self.imgShapes = [imgShape]
@@ -28,12 +28,12 @@ class FastNet(object):
     self.numCase = self.cost = self.correct = 0.0
 
     self.numConv = 0
-    if initModel:
-      if 'model_state' in initModel:
-          add_fastnet_layers(self, initModel['model_state']['layers'])
+    if init_model:
+      if 'model_state' in init_model:
+          add_fastnet_layers(self, init_model['model_state']['layers'])
       else:
-        add_fastnet_layers(self, initModel)
-    elif autoAdd:  # for imagenet, use param file
+        add_fastnet_layers(self, init_model)
+    elif auto_init:  # for imagenet, use param file
       add_cifar10_layers(self, 10)
 
     self.adjust_learning_rate(self.learningRate)
