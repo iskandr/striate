@@ -127,11 +127,6 @@ class WeightedLayer(Layer):
     self.epsB *= l
 
   def get_summary(self, type = 'mean'):
-    #w = util.abs_mean(self.weight)
-    #wi = 0.0 if not hasattr(self, 'weightIncr') else util.abs_mean(self.weightIncr)
-
-    #b = util.abs_mean(self.bias)
-    #bi = 0.0 if not hasattr(self, 'biasIncr') else util.abs_mean(self.biasIncr)
     w = self.weight.get()
     w = np.mean(np.abs(w))
     wi = 0.0
@@ -338,19 +333,19 @@ class FCLayer(WeightedLayer):
 
     if train == TEST:
       if self.dropRate > 0.0:
-        output *= self.dropRate
+        output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
         self.dropMask = gpuarray.to_gpu(np.random.rand(*output.shape).astype(np.float32))
         bigger_than_scaler(self.dropMask, self.dropRate)
-        gpu_copy_to(output, output * self.dropMask)
+        gpu_copy_to(output * self.dropMask, output)
 
     if PFout:
       printMatrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
-      gpu_copy_to(grad, grad * self.dropMask)
+      gpu_copy_to(grad * self.dropMask, grad)
     gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
     self.weightGrad = dot(grad, transpose(input))
     add_row_sum_to_vec(self.biasGrad, grad, alpha=0.0)
