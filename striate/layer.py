@@ -545,7 +545,7 @@ class FastNetBuilder(Builder):
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
     image_shape = Builder.set_val(ld, 'imgShape')
-    blocked = bool(Builder.set_val(ld, 'blocked', default = 'False'))
+    blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
     return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
 
   def softmax_layer(self, ld):
