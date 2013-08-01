@@ -100,7 +100,7 @@ def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   if row_to == 0:
     row_to = 10#x.shape[0]
   if col_to == 0:
-    col_to = 1#x.shape[1]
+    col_to = 10#x.shape[1]
   if isinstance(x, gpuarray.GPUArray):
     a = x.get()[row_from: row_to , col_from: col_to]
   else:

@@ -53,7 +53,7 @@ class DataProvider(object):
       self.batch_range = self.get_batch_indexes()
     else:
       self.batch_range = batch_range
-    random.shuffle(self.batch_range)
+    #random.shuffle(self.batch_range)
 
 
   def get_next_index(self):
@@ -250,7 +250,7 @@ class CifarDataProvider(DataProvider):
   def _get_next_batch(self):
     self.get_next_index()
     if self.curr_batch_index == 0:
-      random.shuffle(self.batch_range)
+      #random.shuffle(self.batch_range)
       self.curr_epoch += 1
     self.curr_batch = self.batch_range[self.curr_batch_index]
     # print self.batch_range, self.curr_batch

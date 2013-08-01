@@ -190,8 +190,10 @@ class Trainer:
     self.report()
 
   def report(self):
-    print self.net.get_report()
-    timer.report()
+    rep = self.net.get_report()
+    if rep is not None:
+      print rep
+    #timer.report()
 
 
 

@@ -236,7 +236,6 @@ class FastNet(object):
 
   def train_batch(self, data, label, train=TRAIN):
     self.prepare_for_train(data, label)
-    # printMatrix(data, 'data')
     self.fprop(self.data, self.output, train)
     cost, correct = self.get_cost(self.label, self.output)
     self.cost += cost
@@ -398,4 +397,6 @@ def add_cifar10_layers(net, n_out):
 def add_fastnet_layers(net, model):
   builder = FastNetBuilder()
   for layer in model:
-    net.append_layer(builder.make_layer(net, layer))
+    l = builder.make_layer(net, layer)
+    if l is not None:
+      net.append_layer(builder.make_layer(net, layer))

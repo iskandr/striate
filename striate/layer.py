@@ -51,8 +51,8 @@ class WeightedLayer(Layer):
       weightIncr , biasIncr, weightShape, biasShape):
     Layer.__init__(self, name, type)
 
-    self.epsW = epsW
-    self.epsB = epsB
+    self.epsW = np.float32(epsW)
+    self.epsB = np.float32(epsB)
     self.initW = initW
     self.initB = initB
     self.momW = momW
@@ -110,16 +110,16 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      self.weight += self.weightGrad * self.epsW / self.batchSize
-      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
+      #self.weight += self.weightGrad * self.epsW / self.batchSize
+      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / F(self.batchSize))
 
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      self.bias += self.biasGrad * self.epsB / self.batchSize
-      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      #self.bias += self.biasGrad * self.epsB / self.batchSize
+      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / F(self.batchSize))
 
 
   def scaleLearningRate(self, l):
@@ -352,6 +352,7 @@ class FCLayer(WeightedLayer):
     add_row_sum_to_vec(self.biasGrad, grad, alpha=0.0)
 
 
+
 class SoftmaxLayer(Layer):
   def __init__(self, name, input_shape):
     Layer.__init__(self, name, "softmax")
@@ -370,11 +371,8 @@ class SoftmaxLayer(Layer):
     col_max_reduce(max, input)
     add_vec_to_cols(input, max, output, alpha= -1)
     eltwise_exp(output)
-    #printMatrix(output, 'expl')
-    #gpu_copy_to(cumath.exp(output), output)
     sum = gpuarray.zeros(max.shape, dtype=np.float32)
     add_col_sum_to_vec(sum, output, alpha=0)
-    #printMatrix(sum, 'sum')
     div_vec_to_cols(output, sum)
     if PFout:
       printMatrix(output, self.name)
@@ -386,9 +384,6 @@ class SoftmaxLayer(Layer):
     find_col_max_id(maxid, output)
     self.batchCorrect = same_reduce(label , maxid)
     logreg_cost_col_reduce(output, label, self.cost)
-#     print 'Output: ', output.get()
-#     print 'Label: ', label.get()
-#     print self.cost
 
   def bprop(self, label, input, output, outGrad):
     softmax_bprop(output, label, outGrad)
@@ -498,7 +493,7 @@ class Builder(object):
   def make_layer(self, net, ld):
     ld['imgShape'] = net.imgShapes[-1]
     ld['inputShape'] = net.inputShapes[-1]
-    
+
     if ld['type'] == 'conv': return self.conv_layer(ld)
     elif ld['type'] == 'pool': return self.pool_layer(ld)
     elif ld['type'] == 'neuron': return self.neuron_layer(ld)
@@ -506,9 +501,9 @@ class Builder(object):
     elif ld['type'] == 'softmax': return self.softmax_layer(ld)
     elif ld['type'] == 'rnorm': return self.rnorm_layer(ld)
     elif ld['type'] == 'cmrnorm': return self.crm_layer(ld)
-    else:
-      raise Exception, 'Unknown layer %s' % ld['type']
-  
+    #else:
+    #  raise Exception, 'Unknown layer %s' % ld['type']
+
 
 class FastNetBuilder(Builder):
 
@@ -535,7 +530,7 @@ class FastNetBuilder(Builder):
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
                      momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
-  
+
   def pool_layer(self, ld):
     stride = Builder.set_val(ld, 'stride')
     start = Builder.set_val(ld, 'start')
@@ -552,7 +547,7 @@ class FastNetBuilder(Builder):
     image_shape = Builder.set_val(ld, 'imgShape')
     blocked = bool(Builder.set_val(ld, 'blocked', default = 'False'))
     return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
-  
+
   def softmax_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     input_shape = Builder.set_val(ld, 'inputShape')
@@ -657,7 +652,7 @@ class CudaconvNetBuilder(FastNetBuilder):
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
-  
+
   def fc_layer(self, ld):
     epsB = ld['epsB']
     epsW = ld['epsW'][0]

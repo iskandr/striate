@@ -747,11 +747,11 @@ def add_col_sum_to_vec(vec, mat, alpha=1.0, beta=1.0):
   vh, vw = vec.shape
   assert(vw == 1 and vh == mw or vh == 1 and vw == mw)
 
-  #cudaconv2.sum(mat, 0, vec)
-  grid = (mw, 1)
-  block = (1, mh, 1)
-  leading = mat.strides[0] / 4
-  _add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
+  cudaconv2.sum(mat, 0, vec)
+  #grid = (mw, 1)
+  #block = (1, mh, 1)
+  #leading = mat.strides[0] / 4
+  #_add_col_sum_to_vec_(mat, F(alpha), vec, F(beta), I(leading), I(mh), I(mw), block=block, grid=grid)
   timer.end('add_col_sum_to_vec')
 
 

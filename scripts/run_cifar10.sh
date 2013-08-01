@@ -1,11 +1,11 @@
 #!/bin/sh
 
 
-python trainer.py \
+python ~/striate/striate/trainer.py \
   --data_dir /hdfs/cifar/data/cifar-10-python/ \
   --param_file ~/striate/striate/cifar10.cfg \
   --data_provider cifar10 \
-  --train_range 1 \
+  --train_range 1-2 \
   --test_range 41 \
   --save_freq 100 \
   --test_freq 100 \
