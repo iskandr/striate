@@ -208,7 +208,6 @@ class ConvLayer(WeightedLayer):
     self.biasGrad.fill(0)
     gpu_copy_to(grad, self.tmp)
     add_row_sum_to_vec(self.biasGrad, self.tmp)
-    printMatrix(self.weightGrad, self.name)
 
 
 class MaxPoolLayer(Layer):

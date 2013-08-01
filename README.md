@@ -5,7 +5,7 @@ top of the convolutional kernel code from [cuda-convnet](https://code.google.com
 
 **Usage**
 
-  See `striate/trainer.py` for examples of running the trainer.
+  See `python striate/trainer.py --help` for examples of running the trainer.
 
     (cd cudaconv2 && make -j)
     python striate/trainer.py

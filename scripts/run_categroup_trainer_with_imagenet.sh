@@ -1,6 +1,6 @@
 #!/bin/sh
 
-python trainer.py --test_id 20 \
+python ~/striate/striate/trainer.py  \
   --data_dir /ssd/nn-data/imagenet/ \
   --param_file ~/striate/striate/imagenet.cfg \
   --data_provider imagenetcategroup \
@@ -14,4 +14,5 @@ python trainer.py --test_id 20 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer categroup \
   --num_minibatch "[10000, 20000]" \
-  --num_group_list "[100, 1000]"
+  --num_group_list "[100, 1000]" \
+  $@

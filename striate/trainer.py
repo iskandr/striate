@@ -475,7 +475,7 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
 class ImageNetCateGroupTrainer(MiniBatchTrainer):
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
       test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
-      num_group_list, init_model):
+      num_group_list, init_model, adjust_freq = 100, factor = 1.0):
 
     self.train_minibatch_list = num_minibatch[1:]
     self.num_group_list = num_group_list[1:]

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 
-python trainer.py --test_id 14 \
+python ~/striate/striate/trainer.py \
   --data_dir /ssd/nn-data/imagenet/ \
   --param_file ~/striate/striate/imagenet.cfg \
   --data_provider imagenet \

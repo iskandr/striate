@@ -1,6 +1,6 @@
 #!/bin/sh
 
-CUDA_DEVICE=1 python trainer.py --test_id 15 \
+CUDA_DEVICE=1 python ~/striate/striate/trainer.py  \
   --data_dir /ssd/nn-data/imagenet/ \
   --param_file ~/striate/striate/imagenet.cfg \
   --data_provider imagenet \
@@ -14,4 +14,5 @@ CUDA_DEVICE=1 python trainer.py --test_id 15 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer catewise \
   --num_minibatch "[10000, 20000]" \
-  --num_caterange_list "[100, 1000]"
+  --num_caterange_list "[100, 1000]" \
+  $@
