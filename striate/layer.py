@@ -51,13 +51,13 @@ class WeightedLayer(Layer):
       weightIncr , biasIncr, weightShape, biasShape):
     Layer.__init__(self, name, type)
 
-    self.epsW = np.float32(epsW)
-    self.epsB = np.float32(epsB)
+    self.epsW = F(epsW)
+    self.epsB = F(epsB)
     self.initW = initW
     self.initB = initB
-    self.momW = momW
-    self.momB = momB
-    self.wc = wc
+    self.momW = F(momW)
+    self.momB = F(momB)
+    self.wc = F(wc)
 
     if weight is None:
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
@@ -106,16 +106,15 @@ class WeightedLayer(Layer):
 
   def update(self):
     if self.momW > 0.0:
-      matrix_add(self.weightIncr, self.weightGrad, alpha=self.momW, beta=self.epsW / self.batchSize)
-      matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
+      matrix_add(self.weightIncr, self.weightGrad, alpha=self.momW, beta=self.epsW / F(self.batchSize))
+      matrix_add(self.weightIncr, self.weight, alpha=1, beta= F(-self.wc * self.epsW))
       matrix_add(self.weight, self.weightIncr)
     else:
       #self.weight += self.weightGrad * self.epsW / self.batchSize
       matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / F(self.batchSize))
 
     if self.momB > 0.0:
-      matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
-      matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
+      matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / F(self.batchSize))
       matrix_add(self.bias, self.biasIncr)
     else:
       #self.bias += self.biasGrad * self.epsB / self.batchSize
@@ -337,7 +336,7 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        self.dropMask = gpuarray.to_gpu(np.random.rand(*output.shape).astype(np.float32))
+        self.dropMask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         bigger_than_scaler(self.dropMask, self.dropRate)
         gpu_copy_to(output * self.dropMask, output)
 
