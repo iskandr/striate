@@ -110,16 +110,16 @@ class WeightedLayer(Layer):
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= -self.wc * self.epsW)
       matrix_add(self.weight, self.weightIncr)
     else:
-      #self.weight += self.weightGrad * self.epsW / self.batchSize
-      matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
+      self.weight += self.weightGrad * self.epsW / self.batchSize
+      #matrix_add(self.weight, self.weightGrad, alpha = 1, beta = self.epsW / self.batchSize)
 
     if self.momB > 0.0:
       matrix_add(self.biasIncr, self.biasGrad, alpha=self.momB, beta=self.epsB / self.batchSize)
       matrix_add(self.biasIncr, self.bias, alpha = 1, beta= -self.wc * self.epsB)
       matrix_add(self.bias, self.biasIncr)
     else:
-      #self.bias += self.biasGrad * self.epsB / self.batchSize
-      matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
+      self.bias += self.biasGrad * self.epsB / self.batchSize
+      #matrix_add(self.bias, self.biasGrad, alpha = 1, beta = self.epsB / self.batchSize)
 
 
   def scaleLearningRate(self, l):
@@ -208,6 +208,7 @@ class ConvLayer(WeightedLayer):
     self.biasGrad.fill(0)
     gpu_copy_to(grad, self.tmp)
     add_row_sum_to_vec(self.biasGrad, self.tmp)
+    printMatrix(self.weightGrad, self.name)
 
 
 class MaxPoolLayer(Layer):
@@ -244,7 +245,7 @@ class ResponseNormLayer(Layer):
 
     self.pow = pow
     self.size = size
-    self.scale = scale
+    self.scale = scale / self.size ** 2
     self.denom = None
 
   def get_output_shape(self):
@@ -273,6 +274,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False):
     ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale)
     self.type = 'cmrnorm'
+    self.scale = scale / size
     self.blocked = blocked
 
   def fprop(self, input, output, train=TRAIN):

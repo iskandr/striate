@@ -56,8 +56,8 @@ class Trainer:
 
   def init_data_provider(self):
     dp = DataProvider.get_by_name(self.data_provider)
-    self.train_dp = dp(self.data_dir, self.train_range, category_range=range(1000))
-    self.test_dp = dp(self.data_dir, self.test_range, category_range=range(1000))
+    self.train_dp = dp(self.data_dir, self.train_range)
+    self.test_dp = dp(self.data_dir, self.test_range)
 
 
   def get_next_minibatch(self, i, train=TRAIN):
@@ -464,7 +464,7 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       fc['biasIncr'] = None
 
       self.learning_rate = self.learning_rate_list[i]
-      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
 
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
@@ -517,7 +517,7 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
       fc['biasIncr'] = None
 
       self.learning_rate = self.learning_rate_list[i]
-      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel = model)
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
 
       self.net.clear_weight_incr()
       MiniBatchTrainer.train(self)
