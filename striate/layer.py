@@ -63,7 +63,7 @@ class WeightedLayer(Layer):
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
       print 'init weight from disk'
-      weight = np.require(weight, dtype = np.float32, requirements = 'C')
+      #weight = np.require(weight, dtype = np.float32, requirements = 'C')
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
     if bias is None:
@@ -73,7 +73,7 @@ class WeightedLayer(Layer):
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
       print 'init bias from disk'
-      bias = np.require(bias, dtype = np.float32, requirements = 'C')
+      #bias = np.require(bias, dtype = np.float32, requirements = 'C')
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
 
     self.weightGrad = gpuarray.zeros_like(self.weight)
@@ -214,6 +214,7 @@ class ConvLayer(WeightedLayer):
 class MaxPoolLayer(Layer):
   def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
     Layer.__init__(self, name, 'pool')
+    self.pool = 'max'
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
@@ -240,6 +241,7 @@ class MaxPoolLayer(Layer):
 class AvgPoolLayer(Layer):
   def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
     Layer.__init__(self, name, 'pool')
+    self.pool = 'avg'
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
@@ -334,6 +336,7 @@ class FCLayer(WeightedLayer):
     self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
         bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
+    util.log('%s dropRate: %s', self.name, self.dropRate)
 
 
   def dump(self):
@@ -545,7 +548,6 @@ class Builder(object):
 
 
 class FastNetBuilder(Builder):
-
   def conv_layer(self, ld):
     numFilter = Builder.set_val(ld, 'numFilter')
     filterSize = Builder.set_val(ld, 'filterSize')

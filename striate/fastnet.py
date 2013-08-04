@@ -233,15 +233,15 @@ class FastNet(object):
     self.prepare_for_train(data, label)
     self.fprop(self.data, self.output, train)
     cost, correct = self.get_cost(self.label, self.output)
-
-    if self.save_layers is not None:
-      it = [i for i in range(len(self.layers)) if self.layers[i].name in self.save_layers]
-      outputs = [transpose(o).get() for o in self.outputs]
-      label = self.label.get()
-      self.save_output.extend([(label[i, 0], dict(zip(self.save_layers, [outputs[j][i,:] for j in it]))) for i in range(self.batchSize)])
-
     self.cost += cost
     self.correct += correct
+
+    if self.save_layers is not None:
+      it = [(i, self.layers[i].name) for i in range(len(self.layers)) if self.layers[i].name in self.save_layers]
+      outputs = [transpose(o).get() for o in self.outputs]
+      label = self.label.get()
+      self.save_output.extend([(label[i, 0], dict([(name, outputs[j][i,:]) for j, name in it])) for i in range(self.batchSize)])
+
     if train == TRAIN:
       self.bprop(self.data, self.label, self.output)
       self.update()
@@ -410,4 +410,4 @@ def add_fastnet_layers(net, model):
   for layer in model:
     l = builder.make_layer(net, layer)
     if l is not None:
-      net.append_layer(builder.make_layer(net, layer))
+      net.append_layer(l)

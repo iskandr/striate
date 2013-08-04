@@ -198,12 +198,12 @@ class Trainer:
       start = time.time()
       self.test_data = self.test_dp.get_next_batch()
       self.curr_epoch = self.test_data.epoch
-      self.cur_batch = self.test_data.batchnum
+      self.curr_batch = self.test_data.batchnum
 
       self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
       for i in range(self.num_test_minibatch):
         input, label = self.get_next_minibatch(i, TEST)
-        self.net.train_batch(input, label)
+        self.net.train_batch(input, label, TEST)
       cost , correct, numCase = self.net.get_batch_information()
       print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
       if save_layers is not None:
@@ -214,8 +214,6 @@ class Trainer:
         with open(filename, 'w') as f:
           cPickle.dump(save_output, f, protocol = -1)
         util.log('save layer output finished')
-
-
 
 
   def report(self):
@@ -655,4 +653,5 @@ if __name__ == '__main__':
 
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
-  trainer.predict(['softmax'], 'cifar_softmax.opt')
+  trainer.train()
+  #trainer.predict(['softmax'], 'cifar_softmax.opt')
