@@ -70,10 +70,6 @@ except AttributeError:
 MODULE_FILTER_IMAGE = _cudaconv2.MODULE_FILTER_IMAGE
 FILTER_MODULE_IMAGE = _cudaconv2.FILTER_MODULE_IMAGE
 
-def test(*args):
-  return _cudaconv2.test(*args)
-test = _cudaconv2.test
-
 def convFilterActs(*args):
   return _cudaconv2.convFilterActs(*args)
 convFilterActs = _cudaconv2.convFilterActs
@@ -172,6 +168,10 @@ addVector = _cudaconv2.addVector
 def convLocalMaxPool(*args):
   return _cudaconv2.convLocalMaxPool(*args)
 convLocalMaxPool = _cudaconv2.convLocalMaxPool
+
+def convLocalAvgPool(*args):
+  return _cudaconv2.convLocalAvgPool(*args)
+convLocalAvgPool = _cudaconv2.convLocalAvgPool
 
 def convLocalAvgUndo(*args):
   return _cudaconv2.convLocalAvgUndo(*args)

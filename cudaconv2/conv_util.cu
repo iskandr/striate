@@ -2903,6 +2903,10 @@ void convLocalMaxPool(NVMatrix& images, NVMatrix& target, int numFilters,
                    int subsX, int startX, int strideX, int outputsX) {
   convLocalPool(images, target, numFilters, subsX, startX, strideX, outputsX, MaxPooler());
 }
+void convLocalAvgPool(NVMatrix& images, NVMatrix& target, int numFilters,
+                   int subsX, int startX, int strideX, int outputsX) {
+  convLocalPool(images, target, numFilters, subsX, startX, strideX, outputsX, AvgPooler());
+}
 
 void addVector(NVMatrix& target, NVMatrix& vec) {
   target.addVector(vec);

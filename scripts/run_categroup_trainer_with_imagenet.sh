@@ -9,10 +9,10 @@ python ~/striate/striate/trainer.py  \
   --save_freq 100 \
   --test_freq 100 \
   --adjust_freq 100 \
-  --learning_rate "[0.1, 0.05]" \
+  --learning_rate "[0.1, 0.1]" \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer categroup \
-  --num_minibatch "[10000, 20000]" \
+  --num_minibatch "[15000, 25000]" \
   --num_group_list "[100, 1000]" \
   $@

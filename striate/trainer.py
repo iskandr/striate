@@ -181,13 +181,42 @@ class Trainer:
       wait_time = time.time()
 
       #print 'waitting', time.time() - wait_time, 'secs to load'
-      #print 'time to train a batch file is', time.time() - start
+      #print 'time to train a batch file is', time.time() - start)
 
     if self.num_batch % self.save_freq != 0:
       print '---- save checkpoint ----'
       self.save_checkpoint()
 
     self.report()
+
+  def predict(self, save_layers = None, filename = None):
+    self.net.save_layerouput(save_layers)
+    self.print_net_summary()
+    util.log('Starting predict...')
+    save_output = []
+    while self.curr_epoch < 2:
+      start = time.time()
+      self.test_data = self.test_dp.get_next_batch()
+      self.curr_epoch = self.test_data.epoch
+      self.cur_batch = self.test_data.batchnum
+
+      self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
+      for i in range(self.num_test_minibatch):
+        input, label = self.get_next_minibatch(i, TEST)
+        self.net.train_batch(input, label)
+      cost , correct, numCase = self.net.get_batch_information()
+      print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
+      if save_layers is not None:
+        save_output.extend(self.net.get_save_output())
+
+    if save_layers is not None:
+      if filename is not None:
+        with open(filename, 'w') as f:
+          cPickle.dump(save_output, f, protocol = -1)
+        util.log('save layer output finished')
+
+
+
 
   def report(self):
     rep = self.net.get_report()
@@ -626,4 +655,4 @@ if __name__ == '__main__':
 
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
-  trainer.train()
+  trainer.predict(['softmax'], 'cifar_softmax.opt')

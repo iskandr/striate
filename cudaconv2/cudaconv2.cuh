@@ -36,9 +36,6 @@ enum FILTER_OUTPUT_ORDER {
     MODULE_FILTER_IMAGE, FILTER_MODULE_IMAGE
 };
 
-void test(NVMatrix& img);
-void test(NVMatrix& img, int x);
-
 void convFilterActs(NVMatrix& images, NVMatrix& filters, NVMatrix& targets, int imgSizeY, int numModulesY,
                     int numModulesX, int paddingStart, int moduleStride, int numImgColors, int numGroups);
 void convFilterActs(NVMatrix& images, NVMatrix& filters, NVMatrix& targets, int imgSizeY, int numModulesY,

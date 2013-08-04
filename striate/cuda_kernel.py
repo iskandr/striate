@@ -550,6 +550,18 @@ _eltwise_exp_ = CompiledSource('''
       dest[idx] = __expf(src[idx]);
     }''', 'eltwise_exp')
 
+_eltwise_mul_ = CompiledSource('''
+    __global__
+    void eltwise_mul(float* src, float* right, float* dest, int rows, int cols, int leading) {
+      int i = blockIdx.x * blockDim.x + threadIdx.x;
+      int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+      if( i >= cols ) return ;
+      if( j >= rows ) return ;
+
+      int idx = i + j * leading;
+      dest[idx] = src[idx] *right[idx];
+    }''', 'eltwise_mul')
 
 def row_max_reduce(x, mat):
   '''
@@ -962,3 +974,14 @@ def eltwise_exp(src, dest = None):
   grid =  (divup(mw, 32), divup(mh, 32))
   leading = src.strides[0] / 4
   _eltwise_exp_(src, dest, I(mh), I(mw), I(leading), block = block, grid = grid)
+
+def eltwise_mul(src, right, dest = None):
+  assert src.shape == right.shape
+  if dest is None:
+    dest = src
+  mh, mw = src.shape
+
+  block = (32, 32, 1)
+  grid = (divup(mw, 32), divup(mh, 32))
+  leading = src.strides[0] / 4
+  _eltwise_mul_(src, right, dest, I(mh), I(mw), I(leading), block = block, grid = grid)

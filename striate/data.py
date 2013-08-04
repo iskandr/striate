@@ -53,7 +53,7 @@ class DataProvider(object):
       self.batch_range = self.get_batch_indexes()
     else:
       self.batch_range = batch_range
-    #random.shuffle(self.batch_range)
+    random.shuffle(self.batch_range)
 
 
   def get_next_index(self):
@@ -171,7 +171,8 @@ class ImageNetDataProvider(ParallelDataProvider):
 
   def __trim_borders(self, images, target):
     for idx, img in enumerate(images):
-      startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+      #startY, startX = np.random.randint(0, self.border_size * 2 + 1), np.random.randint(0, self.border_size * 2 + 1)
+      startY, startX = 0, 0
       endY, endX = startY + self.inner_size, startX + self.inner_size
       pic = img[:, startY:endY, startX:endX]
       if np.random.randint(2) == 0:  # also flip the image with 50% probability
@@ -189,10 +190,8 @@ class ImageNetDataProvider(ParallelDataProvider):
     batchnum = self.curr_batch
     names = self.images[self.batches[batchnum]]
     num_imgs = len(names)
-
     labels = np.zeros((1, num_imgs))
     cropped = np.ndarray((self.get_data_dims(), num_imgs * self.data_mult), dtype=np.uint8)
-
     # load in parallel for training
     st = time.time()
     images = []
@@ -229,7 +228,6 @@ class ImageNetDataProvider(ParallelDataProvider):
     #util.log("Loaded %d images in %.2f seconds (%.2f load, %.2f align)",
     #         num_imgs, time.time() - start, load_time, align_time)
     # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
-
     return BatchData(cropped, labels, epoch, batchnum)
 
   # Returns the dimensionality of the two data matrices returned by get_next_batch
@@ -250,7 +248,7 @@ class CifarDataProvider(DataProvider):
   def _get_next_batch(self):
     self.get_next_index()
     if self.curr_batch_index == 0:
-      #random.shuffle(self.batch_range)
+      random.shuffle(self.batch_range)
       self.curr_epoch += 1
     self.curr_batch = self.batch_range[self.curr_batch_index]
     # print self.batch_range, self.curr_batch
@@ -294,8 +292,8 @@ DataProvider.register_data_provider('imagenetcategroup', ImageNetCateGroupDataPr
 
 if __name__ == "__main__":
   data_dir = '/ssd/nn-data/imagenet/'
-  dp = ImageNetCateGroupDataProvider(data_dir, 10, range(1200))
+  dp = ImageNetDataProvider(data_dir, range(1300))
   # data_dir = '/hdfs/cifar/data/cifar-10-python/'
   # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
-  for i in range(1):
+  for i in range(11000):
     data = dp.get_next_batch()

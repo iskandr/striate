@@ -24,6 +24,8 @@ class FastNet(object):
     self.outputs = []
     self.grads = []
     self.output = None
+    self.save_layers = None
+    self.save_output = []
 
     self.numCase = self.cost = self.correct = 0.0
 
@@ -41,6 +43,8 @@ class FastNet(object):
     for l in self.layers:
       util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
+  def save_layerouput(self, layers):
+    self.save_layers = layers
 
   def add_parameterized_layers(self, n_filters=None, size_filters=None, fc_nout=[10]):
     if n_filters is None or n_filters == []:
@@ -209,22 +213,15 @@ class FastNet(object):
         self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
         self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
 
-    timer.end('prepare transform')
-
-    timer.start()
     if not isinstance(data, GPUArray):
       self.data = gpuarray.to_gpu(data).astype(np.float32)
     else:
       self.data = data
 
-    timer.end('assignment')
-
     if not isinstance(label, GPUArray):
       self.label = gpuarray.to_gpu(label).astype(np.float32)
     else:
       self.label = label
-      
-    timer.end('prepare assignment')
 
     self.label = self.label.reshape((label.size, 1))
     self.numCase += input.shape[1]
@@ -232,12 +229,17 @@ class FastNet(object):
     if self.output is None or self.output.shape != outputShape:
       self.output = gpuarray.zeros(outputShape, dtype=np.float32)
 
-    timer.end('prepare end')
-
   def train_batch(self, data, label, train=TRAIN):
     self.prepare_for_train(data, label)
     self.fprop(self.data, self.output, train)
     cost, correct = self.get_cost(self.label, self.output)
+
+    if self.save_layers is not None:
+      it = [i for i in range(len(self.layers)) if self.layers[i].name in self.save_layers]
+      outputs = [transpose(o).get() for o in self.outputs]
+      label = self.label.get()
+      self.save_output.extend([(label[i, 0], dict(zip(self.save_layers, [outputs[j][i,:] for j in it]))) for i in range(self.batchSize)])
+
     self.cost += cost
     self.correct += correct
     if train == TRAIN:
@@ -250,6 +252,15 @@ class FastNet(object):
       layers.append(l.dump())
 
     return layers
+
+
+  def get_save_output(self):
+    if self.save_layers is None:
+      assert False, 'Not specify any save layer name'
+    else:
+      tmp = self.save_output
+      self.save_output = []
+      return tmp
 
   def disable_bprop(self):
     for l in self.layers:
@@ -392,8 +403,8 @@ def add_cifar10_layers(net, n_out):
 
   softmax1 = SoftmaxLayer('softmax', net.inputShapes[-1])
   net.append_layer(softmax1)
-  
-  
+
+
 def add_fastnet_layers(net, model):
   builder = FastNetBuilder()
   for layer in model:

@@ -149,7 +149,7 @@ class WeightedLayer(Layer):
 
 class ConvLayer(WeightedLayer):
   def __init__(self , name, filter_shape, image_shape, padding=2, stride=1, initW=0.01, initB=
-      0.0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0, bias=None, weight=None, weightIncr = None, biasIncr = None):
+      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0, bias=None, weight=None, weightIncr = None, biasIncr = None):
 
     self.filterSize = filter_shape[2]
     self.numFilter = filter_shape[0]
@@ -158,6 +158,9 @@ class ConvLayer(WeightedLayer):
     self.batchSize, self.numColor, self.imgSize, _ = image_shape
     self.padding = padding
     self.stride = stride
+
+    self.partialSum = partialSum
+    self.sharedBiases = sharedBiases
 
     self.outputSize = 1 + divup(2 * self.padding + self.imgSize - self.filterSize, self.stride)
     self.modules = self.outputSize ** 2
@@ -185,7 +188,6 @@ class ConvLayer(WeightedLayer):
   def fprop(self, input, output, train=TRAIN):
     cudaconv2.convFilterActs(input, self.weight, output, self.imgSize, self.outputSize,
         self.outputSize, -self.padding, self.stride, self.numColor, 1)
-
     self.tmp = gpuarray.empty((self.numFilter,
                                self.get_single_img_size() * self.batchSize / self.numFilter),
                               dtype=np.float32)
@@ -234,6 +236,32 @@ class MaxPoolLayer(Layer):
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
         self.start, self.stride, self.outputSize, 0.0, 1.0)
+
+class AvgPoolLayer(Layer):
+  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
+    Layer.__init__(self, name, 'pool')
+    self.poolSize = poolSize
+    self.stride = stride
+    self.start = start
+    self.imgShape = image_shape
+
+    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+
+    self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
+
+  def get_output_shape(self):
+    self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
+    return self.outputShape
+
+  def fprop(self, input, output, train=TRAIN):
+    cudaconv2.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
+        self.outputSize)
+    if PFout:
+      printMatrix(output, self.name)
+
+  def bprop(self, grad, input, output, outGrad):
+    cudaconv2.convLocalAvgUndo(grad, outGrad, self.poolSize,
+        self.start, self.stride, self.outputSize, self.imgSize, 0.0, 1.0)
 
 class ResponseNormLayer(Layer):
   def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001):
@@ -336,8 +364,19 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
+        '''
+        a = [0.7] * output.shape[1]
+        b = [0.1] * output.shape[1]
+
+        c = []
+        for i in range(output.shape[0] / 2):
+          c.append(a)
+          c.append(b)
+        self.dropMask = gpuarray.to_gpu(np.array(c).astype(np.float32))
+        '''
         self.dropMask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         bigger_than_scaler(self.dropMask, self.dropRate)
+        #printMatrix(self.dropMask, 'dropMask')
         gpu_copy_to(output * self.dropMask, output)
 
     if PFout:
@@ -345,6 +384,7 @@ class FCLayer(WeightedLayer):
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
+      #eltwise_mul(grad, self.dropMask)
       gpu_copy_to(grad * self.dropMask, grad)
     gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
     self.weightGrad = dot(grad, transpose(input))
@@ -518,6 +558,8 @@ class FastNetBuilder(Builder):
     epsB = Builder.set_val(ld, 'epsB', 0.002)
     momW = Builder.set_val(ld, 'momW', 0.0)
     momB = Builder.set_val(ld, 'momB', 0.0)
+    sharedBiases = Builder.set_val(ld, 'sharedBiases', default = 1)
+    partialSum = Builder.set_val(ld, 'partialSum', default = 0)
     wc = Builder.set_val(ld, 'wc', 0.0)
     bias = Builder.set_val(ld, 'bias')
     weight = Builder.set_val(ld, 'weight')
@@ -526,8 +568,8 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
-    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW,
-                     momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
+    cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
+        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
 
   def pool_layer(self, ld):
@@ -536,7 +578,11 @@ class FastNetBuilder(Builder):
     poolSize = Builder.set_val(ld, 'poolSize')
     img_shape = Builder.set_val(ld, 'imgShape')
     name = Builder.set_val(ld, 'name')
-    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+    pool = Builder.set_val(ld, 'pool', default = 'max')
+    if pool == 'max':
+      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+    elif pool == 'avg':
+      return AvgPoolLayer(name, img_shape, poolSize, stride, start)
 
   def crm_layer(self, ld):
     name = Builder.set_val(ld, 'name')
