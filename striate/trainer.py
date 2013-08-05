@@ -112,7 +112,6 @@ class Trainer:
     self.test_data = self.test_dp.get_next_batch()
 
     self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
-    print 'batchnum:', self.test_data.batchnum
     for i in range(self.num_test_minibatch):
       input, label = self.get_next_minibatch(i, TEST)
       self.net.train_batch(input, label, TEST)
@@ -654,5 +653,5 @@ if __name__ == '__main__':
 
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
-  #trainer.train()
-  trainer.predict(['softmax'], 'cifar_softmax.opt')
+  trainer.train()
+  #trainer.predict(['pool3', 'fc10', 'softmax'], 'cifar10.opt')

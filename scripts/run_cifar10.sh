@@ -6,7 +6,7 @@ CUDA_DEVICE=1 python  ~/striate/striate/trainer.py \
   --param_file ~/striate/striate/fastcifar.cfg \
   --data_provider cifar10 \
   --train_range 1-40 \
-  --test_range 44 \
+  --test_range 1-48 \
   --save_freq 10 \
   --test_freq 10 \
   --adjust_freq 100 \
@@ -14,6 +14,6 @@ CUDA_DEVICE=1 python  ~/striate/striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer normal \
-  --num_epoch 10 \
-  --loading_file ~/striate/striate/checkpoint/test1000-1.24  \
+  --num_epoch 25 \
+  --loading_file ~/striate/striate/checkpoint/test1000-26.27  \
   $@

@@ -216,7 +216,6 @@ class MaxPoolLayer(Layer):
   def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
     Layer.__init__(self, name, 'pool')
     self.pool = 'max'
-    print >> sys.stderr, self.pool
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
@@ -293,7 +292,7 @@ class ResponseNormLayer(Layer):
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scale, self.pow, 0.0, 1.0)
+        self.size, self.scaler, self.pow, 0.0, 1.0)
 
   def dump(self):
     d = Layer.dump(self)
@@ -316,7 +315,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convResponseNormCrossMapUndo(grad, self.denom, input, output, outGrad, self.numColor,
-        self.size, self.scale, self.pow, self.blocked, 0.0, 1.0)
+        self.size, self.scaler, self.pow, self.blocked, 0.0, 1.0)
 
   def dump(self):
     d = Layer.dump(self)
