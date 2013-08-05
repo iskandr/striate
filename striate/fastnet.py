@@ -84,8 +84,8 @@ class FastNet(object):
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-    print 'append a', layer.type, 'layer', layer.name, 'to network'
-    print 'the output of the layer is', outputShape
+    print >> sys.stderr,  'append a', layer.type, 'layer', layer.name, 'to network'
+    print >> sys.stderr,  'the output of the layer is', outputShape
 
   def del_layer(self):
     name = self.layers[-1]

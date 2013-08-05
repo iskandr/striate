@@ -95,13 +95,14 @@ class Trainer:
     model['test_outputs'] = self.test_outputs
 
     dic = {'model_state': model, 'op':None}
+    self.print_net_summary()
     saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
     for f in saved_filename:
       os.remove(os.path.join(self.checkpoint_dir, f))
     checkpoint_filename = "test%d-%d.%d" % (self.test_id, self.curr_epoch, self.curr_batch)
     checkpoint_file_path = os.path.join(self.checkpoint_dir, checkpoint_filename)
     self.checkpoint_file = checkpoint_file_path
-    print checkpoint_file_path
+    print >> sys.stderr,  checkpoint_file_path
     with open(checkpoint_file_path, 'w') as f:
       cPickle.dump(dic, f, protocol=-1)
     util.log('save file finished')
@@ -111,21 +112,21 @@ class Trainer:
     self.test_data = self.test_dp.get_next_batch()
 
     self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
+    print 'batchnum:', self.test_data.batchnum
     for i in range(self.num_test_minibatch):
       input, label = self.get_next_minibatch(i, TEST)
       self.net.train_batch(input, label, TEST)
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
-    print 'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() - start)
-    self.print_net_summary()
+    print >> sys.stderr,  '[%d] error: %f logreg: %f time: %f' % (self.test_data.batchnum, 1 - correct, cost, time.time() - start)
 
   def print_net_summary(self):
-    print '--------------------------------------------------------------'
+    print >> sys.stderr,  '--------------------------------------------------------------'
     for s in self.net.get_summary():
       name = s[0]
       values = s[1]
-      print "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
-      print "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
+      print >> sys.stderr,  "Layer '%s' weight: %e [%e]" % (name, values[0], values[1])
+      print >> sys.stderr,  "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
 
 
   def check_continue_trainning(self):
@@ -160,23 +161,23 @@ class Trainer:
 
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
-      print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
+      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
 
       self.num_batch += 1
       if self.check_test_data():
-        print '---- test ----'
+        print >> sys.stderr,  '---- test ----'
         self.get_test_error()
-        print '------------'
+        print >> sys.stderr,  '------------'
 
       if self.factor != 1.0 and self.check_adjust_lr():
-        print '---- adjust learning rate ----'
+        print >> sys.stderr,  '---- adjust learning rate ----'
         self.net.adjust_learning_rate(self.factor)
-        print '--------'
+        print >> sys.stderr,  '--------'
 
       if self.check_save_checkpoint():
-        print '---- save checkpoint ----'
+        print >> sys.stderr,  '---- save checkpoint ----'
         self.save_checkpoint()
-        print '------------'
+        print >> sys.stderr,  '------------'
 
       wait_time = time.time()
 
@@ -184,7 +185,7 @@ class Trainer:
       #print 'time to train a batch file is', time.time() - start)
 
     if self.num_batch % self.save_freq != 0:
-      print '---- save checkpoint ----'
+      print >> sys.stderr,  '---- save checkpoint ----'
       self.save_checkpoint()
 
     self.report()
@@ -205,7 +206,7 @@ class Trainer:
         input, label = self.get_next_minibatch(i, TEST)
         self.net.train_batch(input, label, TEST)
       cost , correct, numCase = self.net.get_batch_information()
-      print '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
+      print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
       if save_layers is not None:
         save_output.extend(self.net.get_save_output())
 
@@ -653,5 +654,5 @@ if __name__ == '__main__':
 
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
-  trainer.train()
-  #trainer.predict(['softmax'], 'cifar_softmax.opt')
+  #trainer.train()
+  trainer.predict(['softmax'], 'cifar_softmax.opt')

@@ -44,7 +44,8 @@ class Layer(object):
 
 def randn(shape, dtype):
   np.random.seed(0)
-  return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
+  #return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
+  return np.random.randn(*shape).astype(dtype)
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
@@ -62,7 +63,7 @@ class WeightedLayer(Layer):
     if weight is None:
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
-      print 'init weight from disk'
+      print >> sys.stderr,  'init weight from disk'
       #weight = np.require(weight, dtype = np.float32, requirements = 'C')
       self.weight = gpuarray.to_gpu(weight).astype(np.float32)
 
@@ -72,7 +73,7 @@ class WeightedLayer(Layer):
       else:
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
-      print 'init bias from disk'
+      print >> sys.stderr,  'init bias from disk'
       #bias = np.require(bias, dtype = np.float32, requirements = 'C')
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
 
@@ -82,14 +83,14 @@ class WeightedLayer(Layer):
       if weightIncr is None:
         self.weightIncr = gpuarray.zeros_like(self.weight)
       else:
-        print 'init weightIncr from disk'
+        print >> sys.stderr,  'init weightIncr from disk'
         #weightIncr = np.require(weightIncr, dtype = np.float, requirements = 'C')
         self.weightIncr = gpuarray.to_gpu(weightIncr)
     if self.momW > 0.0:
       if biasIncr is None:
         self.biasIncr = gpuarray.zeros_like(self.bias)
       else:
-        print 'init biasIncr from disk'
+        print >> sys.stderr,  'init biasIncr from disk'
         #biasIncr = np.require(biasIncr, dtype = np.float, requirements = 'C')
         self.biasIncr = gpuarray.to_gpu(biasIncr)
 
@@ -215,6 +216,7 @@ class MaxPoolLayer(Layer):
   def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
     Layer.__init__(self, name, 'pool')
     self.pool = 'max'
+    print >> sys.stderr, self.pool
     self.poolSize = poolSize
     self.stride = stride
     self.start = start
@@ -273,7 +275,8 @@ class ResponseNormLayer(Layer):
 
     self.pow = pow
     self.size = size
-    self.scale = scale / self.size ** 2
+    self.scale = scale
+    self.scaler = self.scale / self.size ** 2
     self.denom = None
 
   def get_output_shape(self):
@@ -282,7 +285,7 @@ class ResponseNormLayer(Layer):
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
-    cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scale,
+    cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scaler,
         self.pow)
     if PFout:
       printMatrix(output, self.name)
@@ -302,12 +305,12 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
   def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False):
     ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale)
     self.type = 'cmrnorm'
-    self.scale = scale / size
+    self.scaler = self.scale / self.size
     self.blocked = blocked
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
-    cudaconv2.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scale, self.pow, self.blocked)
+    cudaconv2.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
       printMatrix(output, self.name)
 
