@@ -98,7 +98,7 @@ def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   from pycuda import gpuarray
   print name
   if row_to == 0:
-    row_to = x.shape[0]
+    row_to = 10#x.shape[0]
   if col_to == 0:
     col_to = 1#x.shape[1]
   if isinstance(x, gpuarray.GPUArray):

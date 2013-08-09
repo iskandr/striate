@@ -13,6 +13,6 @@ python ~/striate/striate/trainer.py  \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer catewise \
-  --num_minibatch "[15000, 25000]" \
+  --num_minibatch "[10000, 30000]" \
   --num_caterange_list "[100, 1000]" \
   $@

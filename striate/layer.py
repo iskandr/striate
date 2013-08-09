@@ -64,8 +64,7 @@ class WeightedLayer(Layer):
       self.weight = gpuarray.to_gpu(randn(weightShape, np.float32) * self.initW)
     else:
       print >> sys.stderr,  'init weight from disk'
-      #weight = np.require(weight, dtype = np.float32, requirements = 'C')
-      self.weight = gpuarray.to_gpu(weight).astype(np.float32)
+      self.weight = gpuarray.to_gpu(weight)#.astype(np.float32)
 
     if bias is None:
       if self.initB > 0.0:
@@ -74,7 +73,6 @@ class WeightedLayer(Layer):
         self.bias = gpuarray.zeros(biasShape, dtype=np.float32)
     else:
       print >> sys.stderr,  'init bias from disk'
-      #bias = np.require(bias, dtype = np.float32, requirements = 'C')
       self.bias = gpuarray.to_gpu(bias).astype(np.float32)
 
     self.weightGrad = gpuarray.zeros_like(self.weight)
@@ -174,7 +172,8 @@ class ConvLayer(WeightedLayer):
 
   def dump(self):
     d = WeightedLayer.dump(self)
-    del d['tmp']
+    if 'tmp' in d:
+      del d['tmp']
     return d
 
 
@@ -296,7 +295,8 @@ class ResponseNormLayer(Layer):
 
   def dump(self):
     d = Layer.dump(self)
-    del d['denom']
+    if 'denom' in d:
+      del d['denom']
     return d
 
 
@@ -545,8 +545,9 @@ class Builder(object):
     elif ld['type'] == 'softmax': return self.softmax_layer(ld)
     elif ld['type'] == 'rnorm': return self.rnorm_layer(ld)
     elif ld['type'] == 'cmrnorm': return self.crm_layer(ld)
-    #else:
-    #  raise Exception, 'Unknown layer %s' % ld['type']
+    else:
+      return None
+      #raise Exception, 'Unknown layer %s' % ld['type']
 
 
 class FastNetBuilder(Builder):
@@ -675,7 +676,7 @@ class CudaconvNetBuilder(FastNetBuilder):
 
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
-    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, epsW, epsB, momW
+    return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, 0, 0, epsW, epsB, momW
         = momW, momB = momB, wc = wc, bias = bias, weight = weight)
 
   def pool_layer(self, ld):
@@ -684,7 +685,12 @@ class CudaconvNetBuilder(FastNetBuilder):
     poolSize = ld['sizeX']
     img_shape = ld['imgShape']
     name = ld['name']
-    return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+    pool = ld['pool']
+    if pool == 'max':
+      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+    else:
+      return AvgPoolLayer(name, img_shape, poolSize, stride, start)
+
 
   def neuron_layer(self, ld):
     if ld['neuron']['type'] == 'relu':
@@ -716,8 +722,28 @@ class CudaconvNetBuilder(FastNetBuilder):
     n_out = ld['outputs']
     bias = ld['biases'].transpose()
     weight = ld['weights'][0].transpose()
+    bias = np.require(bias, dtype = np.float32, requirements = 'C')
+    weight = np.require(weight, dtype = np.float32, requirements = 'C')
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
         = wc, dropRate = dropRate, weight = weight, bias = bias)
 
+  def rnorm_layer(self, ld):
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld,'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    scale = scale * size ** 2
+    image_shape = Builder.set_val(ld, 'imgShape')
+    return ResponseNormLayer(name, image_shape, pow, size, scale)
+
+  def crm_layer(self, ld):
+    name = Builder.set_val(ld, 'name')
+    pow = Builder.set_val(ld, 'pow')
+    size = Builder.set_val(ld, 'size')
+    scale = Builder.set_val(ld, 'scale')
+    scale = scale * size
+    image_shape = Builder.set_val(ld, 'imgShape')
+    blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
+    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)

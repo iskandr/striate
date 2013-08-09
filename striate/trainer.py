@@ -42,17 +42,24 @@ class Trainer:
 
     self.init_data_provider()
     self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
-    self.train_outputs = []
-    self.test_outputs = []
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, auto_init=auto_init, init_model=init_model)
+
+    if init_model is not None and 'model_state' in init_model:
+      self.train_outputs = init_model['model_state']['train_outputs']
+      self.test_outputs = init_model['model_state']['test_outputs']
+    else:
+      self.train_outputs = []
+      self.test_outputs = []
 
     self.curr_minibatch = self.num_batch = self.curr_epoch = self.curr_batch = 0
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, auto_init=auto_init, init_model=init_model)
+
     self.train_data = None
     self.test_data = None
 
     self.num_train_minibatch = 0
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
+
 
   def init_data_provider(self):
     dp = DataProvider.get_by_name(self.data_provider)
@@ -485,12 +492,15 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       model = load(self.checkpoint_file)
       layers = model['model_state']['layers']
 
+      for l in layers:
+        if l['type'] == 'fc':
+          l['weight'] = None
+          l['bias'] = None
+          l['weightIncr'] = None
+          l['biasIncr'] = None
+
       fc = layers[-2]
       fc['outputSize'] = cate
-      fc['weight'] = None
-      fc['bias'] = None
-      fc['weightIncr'] = None
-      fc['biasIncr'] = None
 
       self.learning_rate = self.learning_rate_list[i]
       self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
@@ -654,4 +664,4 @@ if __name__ == '__main__':
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
   trainer.train()
-  #trainer.predict(['pool3', 'fc10', 'softmax'], 'cifar10.opt')
+  #trainer.predict(['pool5'], 'image.opt')
