@@ -153,8 +153,8 @@ class Trainer:
     return self.num_batch % self.adjust_freq == 0
   
   def _finished_minibatch(self):
-    fc = self.net.outputs[-3]
-    label = self.net.label
+    fc = self.net.outputs[-3].get()
+    label = self.net.label.get().reshape(self.net.label.shape[0])
     
     self.fc_dump.append((fc, label))
     #print label.shape, fc.shape
@@ -162,8 +162,23 @@ class Trainer:
     
   def _finished_training(self):
     total_size = sum([l.shape[0] for (fc, l) in self.fc_dump])
-    print total_size
-    pass
+    
+    fc_shape = self.fc_dump[0][0].shape[:-1]
+    
+    label_out = np.ndarray((total_size,), dtype=np.int)
+    fc_out = np.ndarray(tuple([total_size] + list(fc_shape)))
+    
+    pos = 0
+    for fc, label in self.fc_dump:
+      sz = label.shape[0]
+      print pos, pos+sz, label_out[pos:pos+sz].shape, label.shape
+      print fc_out.shape, fc.shape
+      fc_out[pos:pos+sz] = fc.transpose()
+      label_out[pos:pos+sz] = label
+      pos += sz
+    
+    with open('/tmp/cifar.pickle', 'w') as f:
+      cPickle.dump((label_out, fc_out), f, -1)
 
   def train(self):
     self.print_net_summary()

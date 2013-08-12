@@ -10,7 +10,7 @@ class Scheduler:
   def __init__(self, trainer):
     self.trainer = trainer
 
-  def check_continue_trainning(self):
+  def should_continue_training(self):
     return True
 
   def check_test_data(self):
@@ -34,7 +34,7 @@ class SmoothScheduler(Scheduler):
     assert self.trainer.test_freq == self.trainer.save_freq, 'the save freq must be equal to test freq'
     assert len(self.trainer.test_range) == 1, 'the test set could only have one batch'
 
-  def check_continue_trainning(self):
+  def should_continue_training(self):
     return self.keep
 
   def check_save_checkpoint(self):

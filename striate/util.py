@@ -94,7 +94,7 @@ def string_to_float_list(str):
   else:
     return [float(str)]
 
-def printMatrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
+def print_matrix(x, name, row_from = 0, row_to = 0, col_from = 0, col_to = 0):
   from pycuda import gpuarray
   print name
   if row_to == 0:
