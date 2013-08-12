@@ -1,20 +1,20 @@
 from data import DataProvider, ImageNetDataProvider
 from pycuda import gpuarray, driver
-from striate import util
-from striate.data import load
+from striate import util, layer
 from striate.fastnet import FastNet, AdaptiveFastNet
 from striate.layer import TRAIN, TEST
 from striate.parser import Parser
 from striate.scheduler import Scheduler
-from striate.util import divup, timer
+from striate.util import divup, timer, load
+import argparse
 import cPickle
+import glob
 import numpy as np
 import os
 import pprint
 import re
 import sys
 import time
-import argparse
 
 
 class Trainer:
@@ -51,7 +51,7 @@ class Trainer:
       self.test_outputs = []
 
     self.curr_minibatch = self.num_batch = self.curr_epoch = self.curr_batch = 0
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, auto_init=auto_init, init_model=init_model)
+    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model=init_model)
 
     self.train_data = None
     self.test_data = None
@@ -59,6 +59,7 @@ class Trainer:
     self.num_train_minibatch = 0
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
+    self.fc_dump = []
 
 
   def init_data_provider(self):
@@ -103,6 +104,10 @@ class Trainer:
 
     dic = {'model_state': model, 'op':None}
     self.print_net_summary()
+    
+    if not os.path.exists(self.checkpoint_dir):
+      os.system('mkdir -p \'%s\'' % self.checkpoint_dir)
+    
     saved_filename = [f for f in os.listdir(self.checkpoint_dir) if self.regex.match(f)]
     for f in saved_filename:
       os.remove(os.path.join(self.checkpoint_dir, f))
@@ -135,7 +140,7 @@ class Trainer:
       print >> sys.stderr,  "Layer '%s' bias: %e [%e]" % (name, values[2], values[3])
 
 
-  def check_continue_trainning(self):
+  def should_continue_training(self):
     return self.curr_epoch <= self.num_epoch
 
   def check_test_data(self):
@@ -146,11 +151,24 @@ class Trainer:
 
   def check_adjust_lr(self):
     return self.num_batch % self.adjust_freq == 0
+  
+  def _finished_minibatch(self):
+    fc = self.net.outputs[-3]
+    label = self.net.label
+    
+    self.fc_dump.append((fc, label))
+    #print label.shape, fc.shape
+    #print fc
+    
+  def _finished_training(self):
+    total_size = sum([l.shape[0] for (fc, l) in self.fc_dump])
+    print total_size
+    pass
 
   def train(self):
     self.print_net_summary()
     util.log('Starting training...')
-    while self.check_continue_trainning():
+    while self.should_continue_training():
       self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
       self.curr_epoch = self.train_data.epoch
       self.curr_batch = self.train_data.batchnum
@@ -158,10 +176,12 @@ class Trainer:
       start = time.time()
       self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
       t = 0
+      
       for i in range(self.num_train_minibatch):
         input, label = self.get_next_minibatch(i)
         stime = time.time()
         self.net.train_batch(input, label)
+        self._finished_minibatch()
         t += time.time() - stime
         self.curr_minibatch += 1
 
@@ -190,11 +210,10 @@ class Trainer:
       #print 'waitting', time.time() - wait_time, 'secs to load'
       #print 'time to train a batch file is', time.time() - start)
 
-    if self.num_batch % self.save_freq != 0:
-      print >> sys.stderr,  '---- save checkpoint ----'
-      self.save_checkpoint()
 
+    self.save_checkpoint()
     self.report()
+    self._finished_training()
 
   def predict(self, save_layers = None, filename = None):
     self.net.save_layerouput(save_layers)
@@ -242,7 +261,7 @@ class MiniBatchTrainer(Trainer):
         test_range, test_freq, save_freq, batch_size, fake_num_epoch, image_size, image_color,
         learning_rate,  init_model = init_model, adjust_freq = adjust_freq, factor = factor)
 
-  def check_continue_trainning(self):
+  def should_continue_training(self):
     return self.curr_minibatch <= self.num_minibatch
 
 
@@ -257,8 +276,8 @@ class AutoStopTrainer(Trainer):
     self.scheduler = Scheduler.makeScheduler(auto_stop_alg, self)
 
 
-  def check_continue_trainning(self):
-    return Trainer.check_continue_trainning(self) and self.scheduler.check_continue_trainning()
+  def should_continue_training(self):
+    return Trainer.should_continue_training(self) and self.scheduler.should_continue_training()
 
   def check_save_checkpoint(self):
     return Trainer.check_save_checkpoint(self) and self.scheduler.check_save_checkpoint()
@@ -326,7 +345,6 @@ class LayerwisedTrainer(AutoStopTrainer):
     init_n_filter = [self.n_filters[0]]
     init_size_filter = [self.size_filters[0]]
 
-
     self.net.add_parameterized_layers(init_n_filter, init_size_filter, self.fc_nouts)
 
   def train(self):
@@ -348,6 +366,28 @@ class LayerwisedTrainer(AutoStopTrainer):
         self.test_outputs = []
         self.train_outputs = []
         AutoStopTrainer.train(self)
+        
+  def add_parameterized_layers(self, net, n_filters=None, size_filters=None, fc_nout=[10]):
+    for i in range(len(n_filters)):
+      prev = n_filters[i - 1] if i > 0 else net.imgShapes[-1][1]
+      filter_shape = (n_filters[i], prev, size_filters[i], size_filters[i])
+      conv = layer.ConvLayer('conv' + str(net.numConv), filter_shape, net.imgShapes[-1])
+      net.append_layer(conv)
+
+      neuron = layer.NeuronLayer('neuron' + str(net.numConv), net.imgShapes[-1], type='tanh')
+      net.append_layer(neuron)
+
+      pool = layer.MaxPoolLayer('pool' + str(net.numConv), net.imgShapes[-1])
+      net.append_layer(pool)
+
+      rnorm = layer.ResponseNormLayer('rnorm' + str(net.numConv), net.imgShapes[-1])
+      net.append_layer(rnorm)
+
+    for i in range(len(fc_nout)):
+      fc = layer.FCLayer('fc' + str(i + 1), net.inputShapes[-1], fc_nout[-1])
+      net.append_layer(fc)
+
+    net.append_layer(layer.SoftmaxLayer('softmax', net.inputShapes[-1]))
 
 
 class ImageNetLayerwisedTrainer(AutoStopTrainer):
@@ -584,10 +624,11 @@ def get_trainer_by_name(name, param_dict, rest_args):
   if name == 'categroup':
     param_dict['num_group_list'] = util.string_to_int_list(args.num_group_list)
     return ImageNetCateGroupTrainer(**param_dict)
+  
+  raise Exception, 'No trainer found for name: %s' % name
 
 
 if __name__ == '__main__':
-
   parser = argparse.ArgumentParser()
   parser.add_argument('--test_id', help = 'Test Id', default = None, type = int)
   parser.add_argument('--data_dir', help = 'The directory that data stored')
@@ -608,10 +649,9 @@ if __name__ == '__main__':
 
 
   # extra argument
-  extra_argument = ['num_group_list', 'num_caterange_list', 'loading_file', 'num_epoch', 'num_minibatch']
+  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_minibatch']
   parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
-  parser.add_argument('--loading_file', help = 'The checpoint file you want to use to continue your train', )
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
   parser.add_argument('--num_minibatch', help = 'The number of minibatch you want to train(num*1000)')
 
@@ -632,7 +672,8 @@ if __name__ == '__main__':
   elif args.data_provider.startswith('cifar'):
     param_dict['image_size'] = 32
   else:
-    assert False, 'Unknown data_provider %s' % data_provider
+    assert False, 'Unknown data_provider %s' % args.data_provider
+  
   param_dict['train_range'] = util.string_to_int_list(args.train_range)
   param_dict['test_range'] = util.string_to_int_list(args.test_range)
   param_dict['save_freq'] = args.save_freq
@@ -655,11 +696,16 @@ if __name__ == '__main__':
   param_dict['checkpoint_dir'] = args.checkpoint_dir
   trainer = args.trainer
 
+  cp_pattern = param_dict['checkpoint_dir'] + '/test%d' % param_dict['test_id']
+  cp_files = glob.glob('%s*' % cp_pattern)
 
-  if not args.loading_file:
+  if not cp_files:
+    util.log('No checkpoint, starting from scratch.')
     param_dict['init_model'] = Parser(args.param_file).get_result()
   else:
-    param_dict['init_model'] = util.load(args.loading_file)
+    cp_file = sorted(cp_files, key=os.path.getmtime)[-1]
+    util.log('Loading from checkpoint file: %s', cp_file)
+    param_dict['init_model'] = util.load(cp_file)
 
   trainer = get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
