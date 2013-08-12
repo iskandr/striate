@@ -196,7 +196,7 @@ class ConvLayer(WeightedLayer):
     gpu_copy_to(self.tmp, output)
 
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convImgActs(grad, self.weight, outGrad, self.imgSize, self.imgSize,
@@ -232,7 +232,7 @@ class MaxPoolLayer(Layer):
     cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convLocalMaxUndo(input, grad, output, outGrad, self.poolSize,
@@ -259,7 +259,7 @@ class AvgPoolLayer(Layer):
     cudaconv2.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convLocalAvgUndo(grad, outGrad, self.poolSize,
@@ -286,7 +286,7 @@ class ResponseNormLayer(Layer):
     cudaconv2.convResponseNorm(input, self.denom, output, self.numColor, self.size, self.scaler,
         self.pow)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
 
   def bprop(self, grad, input, output, outGrad):
@@ -311,7 +311,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     self.denom = gpuarray.zeros_like(input)
     cudaconv2.convResponseNormCrossMap(input, self.denom, output, self.numColor, self.size, self.scaler, self.pow, self.blocked)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convResponseNormCrossMapUndo(grad, self.denom, input, output, outGrad, self.numColor,
@@ -381,11 +381,11 @@ class FCLayer(WeightedLayer):
         '''
         self.dropMask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         bigger_than_scaler(self.dropMask, self.dropRate)
-        #printMatrix(self.dropMask, 'dropMask')
+        #print_matrix(self.dropMask, 'dropMask')
         gpu_copy_to(output * self.dropMask, output)
 
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
@@ -419,7 +419,7 @@ class SoftmaxLayer(Layer):
     add_col_sum_to_vec(sum, output, alpha=0)
     div_vec_to_cols(output, sum)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def logreg_cost(self, label, output):
     if self.cost.shape[0] !=  self.batchSize:
@@ -505,7 +505,7 @@ class NeuronLayer(Layer):
   def fprop(self, input, output, train=TRAIN):
     self.neuron.activate(input, output)
     if PFout:
-      printMatrix(output, self.name)
+      print_matrix(output, self.name)
 
   def bprop(self, grad, input, output, outGrad):
     self.neuron.computeGrad(grad, output, outGrad)
@@ -574,7 +574,8 @@ class FastNetBuilder(Builder):
     img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
-        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight, weightIncr = weightIncr, biasIncr = biasIncr)
+        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight, 
+        weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
 
   def pool_layer(self, ld):
@@ -655,25 +656,24 @@ class FastNetBuilder(Builder):
 class CudaconvNetBuilder(FastNetBuilder):
   def conv_layer(self, ld):
     numFilter = ld['filters']
-    filterSize = ld['filterSize'][0]
-    numColor = ld['channels'][0]
-    padding = -ld['padding'][0]
-    stride = ld['stride'][0]
-    initW = ld['initW'][0]
-    initB = ld['initB']
+    filterSize = ld['filterSize']
+    numColor = ld['channels']
+    padding = ld['padding']
+    stride = ld['stride']
+    initW = ld['initW']
+    initB = ld.get('initB', 0.0)
     name = ld['name']
-    epsW = ld['epsW'][0]
+    epsW = ld['epsW']
     epsB = ld['epsB']
 
-    momW = ld['momW'][0]
+    momW = ld['momW']
     momB = ld['momB']
 
-    wc = ld['wc'][0]
-    imgSize = ld['imgSize']
+    wc = ld['wc']
 
-    bias = ld['biases']
-    weight = ld['weights'][0]
-
+    bias = ld.get('biases', None)
+    weight = ld.get('weights', None)
+    
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
     return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, 0, 0, epsW, epsB, momW
@@ -710,20 +710,26 @@ class CudaconvNetBuilder(FastNetBuilder):
 
   def fc_layer(self, ld):
     epsB = ld['epsB']
-    epsW = ld['epsW'][0]
-    initB = ld['initB']
-    initW = ld['initW'][0]
+    epsW = ld['epsW']
+    initB = ld.get('initB', 0.0)
+    initW = ld['initW']
     momB = ld['momB']
-    momW = ld['momW'][0]
+    momW = ld['momW']
 
-    wc = ld['wc'][0]
-    dropRate = ld['dropRate']
+    wc = ld['wc']
+    dropRate = ld.get('dropRate', 0.0)
 
     n_out = ld['outputs']
-    bias = ld['biases'].transpose()
-    weight = ld['weights'][0].transpose()
-    bias = np.require(bias, dtype = np.float32, requirements = 'C')
-    weight = np.require(weight, dtype = np.float32, requirements = 'C')
+    bias = ld.get('biases', None)
+    weight = ld.get('weights', None)
+    
+    if bias is not None: 
+      bias = bias.transpose()
+      bias = np.require(bias, dtype = np.float32, requirements = 'C')
+    if weight is not None: 
+      weight = weight.transpose()
+      weight = np.require(weight, dtype = np.float32, requirements = 'C')
+    
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc
