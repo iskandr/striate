@@ -16,6 +16,40 @@ import re
 import sys
 import time
 
+class DataDumper(object):
+  def __init__(self, target_path):
+    self.target_path = target_path
+    self.data = []
+    self.sz = 0
+    self.count = 0
+    self.max_mem_size = 500e6
+    
+  def add(self, data):
+    for k, v in data.iteritems():
+      self.sz += np.prod(v.shape)
+    self.data.append(data)
+    
+    if self.sz > self.max_mem_size:
+      self.flush()
+      
+  def flush(self):
+    if self.sz == 0:
+      return
+
+    out = {}
+    for k in self.data[0].keys():
+      items = [d[k] for d in self.data]
+      out[k] = np.concatenate(items, axis=0)
+    
+    with open('%s.%d' % (self.target_path, self.count), 'w') as f:
+      cPickle.dump(out, f, -1)
+
+    util.log('Wrote layer dump.')
+    self.data = []    
+    self.sz = 0
+    self.count += 1
+    
+
 
 class Trainer:
   CHECKPOINT_REGEX = None
@@ -59,7 +93,10 @@ class Trainer:
     self.num_train_minibatch = 0
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
-    self.fc_dump = []
+    
+    self.train_dumper = None #DataDumper('/scratch1/imagenet-pickle/train-data.pickle')
+    self.test_dumper = None #DataDumper('/scratch1/imagenet-pickle/test-data.pickle')
+    self.input = None
 
 
   def init_data_provider(self):
@@ -80,17 +117,21 @@ class Trainer:
 
     mini_data = batch_data[:, i * batch_size: (i + 1) * batch_size]
     locked_data = driver.pagelocked_empty(mini_data.shape, mini_data.dtype, order='C',
-                                          mem_flags=driver.host_alloc_flags.DEVICEMAP)
+                                          mem_flags=driver.host_alloc_flags.PORTABLE)
     locked_data[:] = mini_data
 
-    input = gpuarray.to_gpu(locked_data)
+    if self.input is not None and locked_data.shape == self.input.shape:
+      self.input.set(locked_data)
+    else:
+      self.input = gpuarray.to_gpu(locked_data)
+    
     label = batch_label[i * batch_size : (i + 1) * batch_size]
     #label = gpuarray.to_gpu(label)
 
     #label = gpuarray.to_gpu(np.require(batch_label[i * batch_size : (i + 1) * batch_size],  dtype =
     #  np.float, requirements = 'C'))
 
-    return input, label
+    return self.input, label
 
 
   def save_checkpoint(self):
@@ -127,6 +168,8 @@ class Trainer:
     for i in range(self.num_test_minibatch):
       input, label = self.get_next_minibatch(i, TEST)
       self.net.train_batch(input, label, TEST)
+      self._capture_test_data()
+    
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
     print >> sys.stderr,  '[%d] error: %f logreg: %f time: %f' % (self.test_data.batchnum, 1 - correct, cost, time.time() - start)
@@ -152,33 +195,25 @@ class Trainer:
   def check_adjust_lr(self):
     return self.num_batch % self.adjust_freq == 0
   
-  def _finished_minibatch(self):
-    fc = self.net.outputs[-3].get()
-    label = self.net.label.get().reshape(self.net.label.shape[0])
-    
-    self.fc_dump.append((fc, label))
-    #print label.shape, fc.shape
-    #print fc
-    
   def _finished_training(self):
-    total_size = sum([l.shape[0] for (fc, l) in self.fc_dump])
+    if self.train_dumper is not None:
+      self.train_dumper.flush()
     
-    fc_shape = self.fc_dump[0][0].shape[:-1]
+    if self.test_dumper is not None:
+      self.test_dumper.flush()
+      
+  def _capture_training_data(self):
+    if not self.train_dumper:
+      return
+
+    self.train_dumper.add({'labels' : self.net.label.get(),
+                           'fc' : self.net.outputs[-3].get().transpose() })
     
-    label_out = np.ndarray((total_size,), dtype=np.int)
-    fc_out = np.ndarray(tuple([total_size] + list(fc_shape)))
-    
-    pos = 0
-    for fc, label in self.fc_dump:
-      sz = label.shape[0]
-      print pos, pos+sz, label_out[pos:pos+sz].shape, label.shape
-      print fc_out.shape, fc.shape
-      fc_out[pos:pos+sz] = fc.transpose()
-      label_out[pos:pos+sz] = label
-      pos += sz
-    
-    with open('/tmp/cifar.pickle', 'w') as f:
-      cPickle.dump((label_out, fc_out), f, -1)
+  def _capture_test_data(self):
+    if not self.test_dumper:
+      return
+    self.test_dumper.add({'labels' : self.net.label.get(),
+                           'fc' : self.net.outputs[-3].get().transpose() })
 
   def train(self):
     self.print_net_summary()
@@ -196,7 +231,7 @@ class Trainer:
         input, label = self.get_next_minibatch(i)
         stime = time.time()
         self.net.train_batch(input, label)
-        self._finished_minibatch()
+        self._capture_training_data()
         t += time.time() - stime
         self.curr_minibatch += 1
 
@@ -226,6 +261,7 @@ class Trainer:
       #print 'time to train a batch file is', time.time() - start)
 
 
+    self.get_test_error()
     self.save_checkpoint()
     self.report()
     self._finished_training()
@@ -688,9 +724,10 @@ if __name__ == '__main__':
     param_dict['image_size'] = 32
   else:
     assert False, 'Unknown data_provider %s' % args.data_provider
-  
+ 
   param_dict['train_range'] = util.string_to_int_list(args.train_range)
   param_dict['test_range'] = util.string_to_int_list(args.test_range)
+  util.log('%s %s', args.test_range, param_dict['test_range'])
   param_dict['save_freq'] = args.save_freq
   param_dict['test_freq'] = args.test_freq
   param_dict['adjust_freq'] = args.adjust_freq

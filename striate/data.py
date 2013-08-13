@@ -13,13 +13,6 @@ import sys
 import threading
 import time
 
-
-def _load(filename):
-  with open(filename, 'rb') as f:
-    d = cPickle.load(f)
-  return d
-
-
 BatchData = collections.namedtuple('BatchData',
                                    ['data', 'labels', 'epoch', 'batchnum'])
 
@@ -38,7 +31,7 @@ class DataProvider(object):
     self.data = None
 
     if os.path.exists(self.meta_file):
-      self.batch_meta = _load(self.meta_file)
+      self.batch_meta = util.load(self.meta_file)
     else:
       print 'No default meta file \'batches.meta\', using another meta file'
 
@@ -136,10 +129,11 @@ class ImageNetDataProvider(ParallelDataProvider):
 
     self.images = []
     batch_dict = dict((k, k) for k in self.batch_range)
+
     for d in cat_dirs:
-      imgs = [v for i, v in enumerate(glob.glob(d + '/*.jpg'))
-              if i in batch_dict]
+      imgs = [v for i, v in enumerate(glob.glob(d + '/*.jpg')) if i in batch_dict]
       self.images.extend(imgs)
+
     self.images = np.array(self.images)
 
     # build index vector into 'images' and split into groups of batch-size
@@ -234,7 +228,7 @@ class ImageNetDataProvider(ParallelDataProvider):
     return (3, self.inner_size, self.inner_size)
 
 
-class CifarDataProvider(DataProvider):
+class CifarDataProvider(ParallelDataProvider):
   def _get_next_batch(self):
     self.get_next_index()
     if self.curr_batch_index == 0:
@@ -245,7 +239,7 @@ class CifarDataProvider(DataProvider):
 
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
-    self.data = _load(filename)
+    self.data = util.load(filename)
     return BatchData(self.data['data'] - self.batch_meta['data_mean'],
                      np.array(self.data['labels']),
                      self.curr_epoch,

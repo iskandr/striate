@@ -39,6 +39,7 @@ class FastNet(object):
 
     self.adjust_learning_rate(self.learningRate)
 
+    util.log('Learning rates:')
     for l in self.layers:
       util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
