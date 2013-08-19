@@ -28,16 +28,17 @@ class FastNet(object):
     self.numConv = 0
     
     if 'model_state' in init_model:
-      # Loading from a checkpoint
-      add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
-    elif is_cudaconvnet_config(init_model):
-      # AlexK config file
-      add_layers(CudaconvNetBuilder(), self, init_model)
+      if not is_cudaconvnet_config(init_model):
+        # Loading from a checkpoint
+        add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
+      else:
+        # AlexK config file
+        add_layers(CudaconvNetBuilder(), self, init_model)
     else:
       # FastNet config file
       add_layers(FastNetBuilder(), self, init_model)
+      self.adjust_learning_rate(self.learningRate)
 
-    self.adjust_learning_rate(self.learningRate)
 
     util.log('Learning rates:')
     for l in self.layers:
@@ -59,6 +60,8 @@ class FastNet(object):
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
+    util.log('%s', self.outputs[-1].shape)
+    util.log('%s', self.grads[-1].shape)
     print >> sys.stderr,  'append a', layer.type, 'layer', layer.name, 'to network'
     print >> sys.stderr,  'the output of the layer is', outputShape
 

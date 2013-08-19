@@ -298,7 +298,35 @@ class Trainer:
     if rep is not None:
       print rep
     #timer.report()
+  
+  @staticmethod
+  def get_trainer_by_name(name, param_dict, rest_args):
+    if name == 'normal':
+      param_dict['num_epoch'] = args.num_epoch
+      return Trainer(**param_dict)
 
+    if name == 'layerwise':
+      param_dict['num_epoch'] = args.num_epoch
+      return ImageNetLayerwisedTrainer(**param_dict)
+    
+    num_minibatch = util.string_to_int_list(args.num_minibatch)
+    if len(num_minibatch) == 1:
+      param_dict['num_minibatch'] = num_minibatch[0]
+    else:
+      param_dict['num_minibatch'] = num_minibatch
+
+    if name == 'minibatch':
+      return MiniBatchTrainer(**param_dict)
+
+    if name == 'catewise':
+      param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
+      return ImageNetCatewisedTrainer(**param_dict)
+
+    if name == 'categroup':
+      param_dict['num_group_list'] = util.string_to_int_list(args.num_group_list)
+      return ImageNetCateGroupTrainer(**param_dict)
+
+    raise Exception, 'No trainer found for name: %s' % name
 
 
 class MiniBatchTrainer(Trainer):
@@ -441,102 +469,68 @@ class LayerwisedTrainer(AutoStopTrainer):
     net.append_layer(layer.SoftmaxLayer('softmax', net.inputShapes[-1]))
 
 
-class ImageNetLayerwisedTrainer(AutoStopTrainer):
-  def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,  params):
-
-    self.origin_test_range = test_range
-    if len(test_range) != 1:
-      test_range = [test_range[0]]
-    AutoStopTrainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, False)
-
-    self.conv_params = []
+class ImageNetLayerwisedTrainer(Trainer):
+  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq,
+      save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, init_model = None,
+      factor = 1.0, adjust_freq = 1):
+    
+    self.curr_model = []
+    self.complete_model = init_model
     self.fc_params = []
-    self.softmax_param = None
-
-    self.params = params
-
+    self.final_num_epoch = num_epoch
     conv = True
-    for ld in self.params:
+    for ld in init_model:
       if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
-        self.conv_params.append(ld)
+        self.curr_model.append(ld)
       elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
         conv = False
       else:
         self.softmax_param = ld
 
-    self.conv_stack = FastNet.split_conv_to_stack(self.conv_params)
     self.fc_stack = FastNet.split_fc_to_stack(self.fc_params)
 
-    pprint.pprint(self.conv_stack)
+  
+    self.curr_model.append(self.fc_stack[-1][0])
+    self.curr_model.append(self.softmax_param)
+    del self.fc_stack[-1]
     pprint.pprint(self.fc_stack)
+    
+    Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq,
+        save_freq, batch_size, 1, image_size, image_color, learning_rate, init_model = self.curr_model)
 
-    self.fakefc_param = self.fc_stack[-1][0]
 
   def report(self):
     pass
 
-  def init_data_provider(self):
-    self.train_dp = ImageNetDataProvider(self.data_dir, self.train_range)
-    self.test_dp = ImageNetDataProvider(self.data_dir, self.test_range)
-
   def train(self):
-    # train conv stack layer by layer
-    for i, stack in enumerate(self.conv_stack):
-      if self.checkpoint_file != '':
-        model = load(self.checkpoint_file)
-        self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel=model)
-        # delete softmax layer
-        self.net.del_layer()
-        self.net.del_layer()
-
-        # for i in range(len(self.fc_params)):
-        #  self.net.del_layer()
-
-        self.net.disable_bprop()
-
-      layerParam = stack + [self.fakefc_param, self.softmax_param]
-      self.net.append_layers_from_dict(layerParam)
-
-      self.init_data_provider()
-      self.scheduler.reset()
-      self.scheduler.set_level(i)
-      self.test_outputs = []
-      self.train_output = []
-      AutoStopTrainer.train(self)
-
     # train fc layer
+    Trainer.train(self)
     for i, stack in enumerate(self.fc_stack):
-      model = load(self.checkpoint_file)
-      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel=model)
-      self.net.del_layer()
-      self.net.del_layer()
-
-      self.net.disable_bprop()
-
+      pprint.pprint(stack)
+      self.curr_model = load(self.checkpoint_file)
+      self.num_batch = self.curr_epoch = self.curr_batch = 0
+      self.curr_minibatch = 0
+      
+      stack[0]['epsW'] *= self.learning_rate
+      stack[0]['epsB'] *= self.learning_rate
+      self.curr_model['model_state']['layers'].insert(-2, stack[0])
+      self.curr_model['model_state']['layers'].insert(-2, stack[1])
+      
       if i == len(self.fc_stack) - 1:
-        layerParam = stack + [self.softmax_param]
+        self.num_epoch = self.final_num_epoch
       else:
-        layerParam = stack + [self.fakefc_param, self.softmax_param]
-      self.net.append_layers_from_dict(layerParam)
+        l = self.curr_model['model_state']['layers'][-2]
+        assert l['type'] == 'fc'
 
-      self.init_data_provider()
-      self.scheduler.reset()
-      self.scheduler.set_level(i)
-      self.test_outputs = []
-      self.train_output = []
-      AutoStopTrainer.train(self)
+        l['weight'] = None
+        l['bias'] = None
+        l['weightIncr'] = None
+        l['biasIncr'] = None
 
-    model = load(self.checkpoint_file)
-    self.test_id += 1
-    self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, initModel=model)
-    self.test_range = self.origin_test_range
-    self.init_data_provider()
-    self.scheduler = Scheduler(self)
-    self.num_epoch /= 2
-    AutoStopTrainer.train(self)
+      
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = self.curr_model)
+      Trainer.train(self)
 
 
 
@@ -583,14 +577,19 @@ class ImageNetCatewisedTrainer(MiniBatchTrainer):
       model = load(self.checkpoint_file)
       layers = model['model_state']['layers']
 
-      for l in layers:
-        if l['type'] == 'fc':
-          l['weight'] = None
-          l['bias'] = None
-          l['weightIncr'] = None
-          l['biasIncr'] = None
-
       fc = layers[-2]
+      fc['weight'] = None
+      fc['bias'] = None
+      fc['weightIncr'] = None
+      fc['biasIncr'] = None
+      #for l in layers:
+      #  if l['type'] == 'fc':
+      #    l['weight'] = None
+      #    l['bias'] = None
+      #    l['weightIncr'] = None
+      #    l['biasIncr'] = None
+
+      #fc = layers[-2]
       fc['outputSize'] = cate
 
       self.learning_rate = self.learning_rate_list[i]
@@ -654,29 +653,6 @@ class ImageNetCateGroupTrainer(MiniBatchTrainer):
 
 
 
-def get_trainer_by_name(name, param_dict, rest_args):
-  if name == 'normal':
-    param_dict['num_epoch'] = args.num_epoch
-    return Trainer(**param_dict)
-
-  num_minibatch = util.string_to_int_list(args.num_minibatch)
-  if len(num_minibatch) == 1:
-    param_dict['num_minibatch'] = num_minibatch[0]
-  else:
-    param_dict['num_minibatch'] = num_minibatch
-
-  if name == 'minibatch':
-    return MiniBatchTrainer(**param_dict)
-
-  if name == 'catewise':
-    param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
-    return ImageNetCatewisedTrainer(**param_dict)
-
-  if name == 'categroup':
-    param_dict['num_group_list'] = util.string_to_int_list(args.num_group_list)
-    return ImageNetCateGroupTrainer(**param_dict)
-  
-  raise Exception, 'No trainer found for name: %s' % name
 
 
 if __name__ == '__main__':
@@ -696,7 +672,7 @@ if __name__ == '__main__':
   parser.add_argument('--checkpoint_dir', help = 'The directory to save checkpoint file')
 
   parser.add_argument('--trainer', help = 'The type of the trainer', default = 'normal', choices =
-      ['normal', 'catewise', 'categroup', 'minibatch'])
+      ['normal', 'catewise', 'categroup', 'minibatch', 'layerwise'])
 
 
   # extra argument
@@ -727,7 +703,6 @@ if __name__ == '__main__':
  
   param_dict['train_range'] = util.string_to_int_list(args.train_range)
   param_dict['test_range'] = util.string_to_int_list(args.test_range)
-  util.log('%s %s', args.test_range, param_dict['test_range'])
   param_dict['save_freq'] = args.save_freq
   param_dict['test_freq'] = args.test_freq
   param_dict['adjust_freq'] = args.adjust_freq
@@ -748,7 +723,7 @@ if __name__ == '__main__':
   param_dict['checkpoint_dir'] = args.checkpoint_dir
   trainer = args.trainer
 
-  cp_pattern = param_dict['checkpoint_dir'] + '/test%d' % param_dict['test_id']
+  cp_pattern = param_dict['checkpoint_dir'] + '/test%d$' % param_dict['test_id']
   cp_files = glob.glob('%s*' % cp_pattern)
 
   if not cp_files:
@@ -759,7 +734,7 @@ if __name__ == '__main__':
     util.log('Loading from checkpoint file: %s', cp_file)
     param_dict['init_model'] = util.load(cp_file)
 
-  trainer = get_trainer_by_name(trainer, param_dict, args)
+  trainer = Trainer.get_trainer_by_name(trainer, param_dict, args)
   util.log('start to train...')
   trainer.train()
   #trainer.predict(['pool5'], 'image.opt')

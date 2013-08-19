@@ -44,8 +44,8 @@ class Layer(object):
 
 def randn(shape, dtype):
   np.random.seed(0)
-  #return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
-  return np.random.randn(*shape).astype(dtype)
+  return np.require(np.random.randn(*shape), dtype=dtype, requirements='C')
+  #return np.random.randn(*shape).astype(dtype)
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
