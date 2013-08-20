@@ -8,9 +8,14 @@ from striate.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
 from striate.util import timer
 import numpy as np
 import sys
+from virtual import virtual_array, Area
+
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
 
 class FastNet(object):
-  def __init__(self, learningRate, imgShape, numOutput, init_model):
+  def __init__(self, learningRate, imgShape, numOutput, init_model = None):
     self.learningRate = learningRate
     self.batchSize, self.numColor, self.imgSize, _ = imgShape
     self.imgShapes = [imgShape]
@@ -26,23 +31,25 @@ class FastNet(object):
     self.numCase = self.cost = self.correct = 0.0
 
     self.numConv = 0
-    
-    if 'model_state' in init_model:
-      if not is_cudaconvnet_config(init_model):
-        # Loading from a checkpoint
-        add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
+
+    if init_model is not None:
+      if 'model_state' in init_model:
+        if not is_cudaconvnet_config(init_model):
+          # Loading from a checkpoint
+          add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
+        else:
+          # AlexK config file
+          add_layers(CudaconvNetBuilder(), self, init_model)
       else:
-        # AlexK config file
-        add_layers(CudaconvNetBuilder(), self, init_model)
+        # FastNet config file
+        add_layers(FastNetBuilder(), self, init_model)
+        self.adjust_learning_rate(self.learningRate)
+      
+      util.log('Learning rates:')
+      for l in self.layers:
+        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
     else:
-      # FastNet config file
-      add_layers(FastNetBuilder(), self, init_model)
-      self.adjust_learning_rate(self.learningRate)
-
-
-    util.log('Learning rates:')
-    for l in self.layers:
-      util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
+      util.log('initial model not provided, network doesn\'t have any layer')
 
   def save_layerouput(self, layers):
     self.save_layers = layers
@@ -256,8 +263,8 @@ class FastNet(object):
 
 
 class AdaptiveFastNet(FastNet):
-  def __init__(self, learningRate, imgShape, numOutput, train, test, initModel=None, autoAdd=True):
-    FastNet.__init__(self, learningRate, imgShape, numOutput, initModel, autoAdd)
+  def __init__(self, learningRate, imgShape, numOutput, train, test, init_model):
+    FastNet.__init__(self, learningRate, imgShape, numOutput, init_model)
     self.train_data, self.train_label = train
     self.test_data, self.test_label = test
     self.adjust_info = [(self.learningRate, 0, 0)]
@@ -346,7 +353,120 @@ class AdaptiveFastNet(FastNet):
 
   def get_report(self):
     return self.adjust_info
+
+class DistFastNet(FastNet):
+  def __init__(self, learning_rate, image_shape, num_ouput, init_model):
+    FastNet.__init__(self, learning_rate, image_shape, num_ouput, init_model)
+
+  def _log(self, fmt, *args):
+    util.log('%s :: %s', rank, fmt % args)
   
+    
+  def fprop(self, data, probs, train = TRAIN):
+    fc = False
+    input = data
+    for i in range(len(self.layers)):
+      l = self.layers[i]
+
+      if l.type == 'fc' or l.type == 'softmax':
+        fc = True
+        input.gather()
+        shape = input.get_global_shape()
+        if len(shape) == 4:
+          c, h, w, b = shape
+          input.reshape(c * h * w, b)
+        input.distribute(axis = -1)
+      
+      if fc != True:
+        padding = l.get_cross_width()
+        if padding != 0:
+          d = input.get_cross(padding) 
+        else:
+          d = input.get_local()
+        d = d.reshape((d.shape[0] * d.shape[1] * d.shape[2], d.shape[3]))
+      else:
+        d = input.get_local()
+      
+      l.fprop(d, self.local_outputs[i], train)
+      if not fc:
+        shape = self.outputs[i].get_local_shape()
+        self.outputs[i].store(self.local_outputs[i].reshape(shape), self.get_local_area())
+      else:
+        self.outputs[i].store(self.local_outputs[i], self.get_local_area())
+
+      input = self.outputs[i]
+  
+  def prepare_for_train(data, label):
+    assert len(data.shape) == 4
+    if data.shape[3] != self.batchSize:
+      self.batchSize = data.shape[3]
+      for l in self.layers:
+        l.change_batch_size(self.batchSize)
+      self.inputShapes = None
+      self.imgShapes = None
+      self.outputs = []
+      self.grads = []
+
+      self.imgShapes = [(self.batchSize, self.numColor, self.imgSize / 2, self.imgSize / 2)]
+      self.inputShapes = [(self.numColr * (self.imgSize ** 2) / 4, self.batchSize)]
+      
+      fc = False
+      for layer in self.layers:
+        outputShape = layer.get_output_shape()
+        batch_size, channal, height, width = outputShape 
+        row = outputShape[1] * outputShape[2] * outputShape[3]
+        col = outputShape[0]
+        
+        self.inputShapes.append((row, col))
+        self.imgShapes.append(outputShape)
+        
+        if layer.type == 'fc':
+          fc = True 
+        
+        if not fc:
+          row_from, row_to, col_from, col_to = rank / 2 * height, rank / 2 * height + height -1, \
+            rank % 2 * width, rank % 2 * width + width - 1
+          f = Point(0, row_from, col_from, 0)
+          t = Point(channal - 1, row_to, col_to, batch_size - 1)
+          area = Area(f, t)
+        else:
+          size = comm.Get_size()
+          row_from, row_to = rank * channal / size, (rank + 1) * channal / size - 1
+          f = Point(row_from, 0)
+          t = Point(row_to, batch_size - 1)
+          area = Area(f, t)
+
+        self.outputs.append(virtual_array(rank, area = area))
+        self.local_outputs.append(gpuarray.zeros((row, col), dtype =np.float32))
+
+      h = w = self.imgSize / 2
+      row_from, row_to, col_from, col_to = rank / 2 * h, rank / 2 * h + h - 1, rank % 2 * w, rank % 2 * w + w - 1
+      assert len(data.shape) == 4
+      f = Point(0, row_from, col_from, 0)
+      t = Point(self.numColor - 1, row_to, col_to, self.batchSize -1)
+      area = Area(f, t)
+      self.data = virtual_array(rank, local = gpuarray.to_gpu(data.__getitem__(area.to_slice())),
+          area = area)
+
+      if not isinstance(label, GPUArray):
+        self.label = gpuarray.to_gpu(label).astype(np.float32)
+      else:
+        self.label = label
+
+      self.label = self.label.reshape((label.size, 1))
+      self.numCase += data.shape[1]
+      outputShape = self.inputShapes[-1]
+
+      if self.output is None or self.output.shape != outputShape:
+        self.output = gpuarray.zeros(outputShape, dtype = np.float32)
+    
+
+
+  def train_batch(self, data, label, train = TRAIN):
+    self.prepare_for_train(data, label)
+    self.fprop(self.data, self.output, train)
+
+
   
 def add_layers(builder, net, model):
   for layer in model:

@@ -54,7 +54,7 @@ class DataDumper(object):
 class Trainer:
   CHECKPOINT_REGEX = None
   def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq, save_freq, batch_size, num_epoch, image_size,
-               image_color, learning_rate, auto_init=False, init_model=None, adjust_freq=1, factor=1.0):
+               image_color, learning_rate, init_model=None, adjust_freq=1, factor=1.0):
     self.test_id = test_id
     self.data_dir = data_dir
     self.data_provider = data_provider
@@ -347,10 +347,9 @@ class MiniBatchTrainer(Trainer):
 class AutoStopTrainer(Trainer):
   def __init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-      auto_init=True, init_model=None, auto_stop_alg='smooth'):
+      init_model=None, auto_stop_alg='smooth'):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, auto_init,
-        init_model=init_model)
+        save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, init_model=init_model)
 
     self.scheduler = Scheduler.makeScheduler(auto_stop_alg, self)
 
@@ -367,7 +366,7 @@ class AdaptiveLearningRateTrainer(Trainer):
       save_freq, batch_size, num_epoch, image_size, image_color, learning_rate, init_model= None, adjust_freq=10, factor=[1.0]):
     Trainer.__init__(self, test_id, data_dir, provider, checkpoint_dir, train_range, test_range, test_freq,
         save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,  adjust_freq = adjust_freq,
-        init_model=init_model, factor=factor, autoInit=False)
+        init_model = None, factor=factor)
     self.train_data = self.train_dp.get_next_batch()
     batch = self.train_data.batchnum
 
@@ -393,7 +392,7 @@ class AdaptiveLearningRateTrainer(Trainer):
     # train_data= self.train_data
     # test_data = self.test_data
     self.net = AdaptiveFastNet(self.learning_rate, self.image_shape, self.n_out, train_data,
-        test_data, autoAdd=True)
+        test_data, init_model = init_model)
 
   def report(self):
     lis = self.net.get_report()

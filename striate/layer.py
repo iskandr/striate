@@ -176,6 +176,7 @@ class ConvLayer(WeightedLayer):
       del d['tmp']
     return d
 
+  def get_cross_width(self):return self.filterSize - 1
 
   def get_single_img_size(self):
     return self.modules * self.numFilter
@@ -228,6 +229,9 @@ class MaxPoolLayer(Layer):
     self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
     return self.outputShape
 
+
+  def get_cross_width(self): return self.poolSize - 1
+
   def fprop(self, input, output, train=TRAIN):
     cudaconv2.convLocalMaxPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
         self.outputSize)
@@ -254,6 +258,8 @@ class AvgPoolLayer(Layer):
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
     return self.outputShape
+
+  def get_cross_width(self): return self.poolSize - 1
 
   def fprop(self, input, output, train=TRAIN):
     cudaconv2.convLocalAvgPool(input, output, self.numColor, self.poolSize, self.start, self.stride,
@@ -288,6 +294,7 @@ class ResponseNormLayer(Layer):
     if PFout:
       print_matrix(output, self.name)
 
+  def get_cross_width(self): return self.size - 1
 
   def bprop(self, grad, input, output, outGrad):
     cudaconv2.convResponseNormUndo(grad, self.denom, input, output, outGrad, self.numColor,
@@ -306,6 +313,8 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
     self.type = 'cmrnorm'
     self.scaler = self.scale / self.size
     self.blocked = blocked
+
+  def get_cross_width(self): return self.size - 1
 
   def fprop(self, input, output, train=TRAIN):
     self.denom = gpuarray.zeros_like(input)
@@ -497,6 +506,8 @@ class NeuronLayer(Layer):
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
     self.batchSize, self.numColor, self.imgSize, _ = image_shape
+  
+  def get_cross_width(self): return 0
 
   def get_output_shape(self):
     self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
