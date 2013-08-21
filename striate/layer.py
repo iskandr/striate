@@ -154,7 +154,7 @@ class ConvLayer(WeightedLayer):
     self.numFilter = filter_shape[0]
     self.imgShape = image_shape
 
-    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+    self.numColor, self.imgSize, _, self.batchSize = image_shape
     self.padding = padding
     self.stride = stride
 
@@ -182,7 +182,7 @@ class ConvLayer(WeightedLayer):
     return self.modules * self.numFilter
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.numFilter, self.outputSize, self.outputSize)
+    self.outputShape = (self.numFilter, self.outputSize, self.outputSize, self.batchSize)
     return self.outputShape
 
 
@@ -221,12 +221,12 @@ class MaxPoolLayer(Layer):
     self.start = start
     self.imgShape = image_shape
 
-    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
 
     self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
+    self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
     return self.outputShape
 
 
@@ -251,12 +251,12 @@ class AvgPoolLayer(Layer):
     self.start = start
     self.imgShape = image_shape
 
-    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
 
     self.outputSize = divup(self.imgSize - self.poolSize - self.start, self.stride) + 1
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.numColor, self.outputSize, self.outputSize)
+    self.outputShape = (self.numColor, self.outputSize, self.outputSize, self.batchSize)
     return self.outputShape
 
   def get_cross_width(self): return self.poolSize - 1
@@ -274,7 +274,7 @@ class AvgPoolLayer(Layer):
 class ResponseNormLayer(Layer):
   def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001):
     Layer.__init__(self, name, 'rnorm')
-    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
     self.imgShape = image_shape
 
     self.pow = pow
@@ -284,7 +284,7 @@ class ResponseNormLayer(Layer):
     self.denom = None
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
+    self.outputShape = (self.numColor, self.imgSize, self.imgSize, self.batchSize)
     return self.outputShape
 
   def fprop(self, input, output, train=TRAIN):
@@ -366,7 +366,7 @@ class FCLayer(WeightedLayer):
     return d
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.outputSize, 1, 1)
+    self.outputShape = (self.outputSize, 1, 1, self.batchSize)
     return self.outputShape
 
   def fprop(self, input, output, train=TRAIN):
@@ -378,19 +378,8 @@ class FCLayer(WeightedLayer):
         output *= (1.0 - self.dropRate)
     else:
       if self.dropRate > 0.0:
-        '''
-        a = [0.7] * output.shape[1]
-        b = [0.1] * output.shape[1]
-
-        c = []
-        for i in range(output.shape[0] / 2):
-          c.append(a)
-          c.append(b)
-        self.dropMask = gpuarray.to_gpu(np.array(c).astype(np.float32))
-        '''
         self.dropMask = gpuarray.to_gpu(np.random.uniform(0, 1, output.size).astype(np.float32).reshape(output.shape))
         bigger_than_scaler(self.dropMask, self.dropRate)
-        #print_matrix(self.dropMask, 'dropMask')
         gpu_copy_to(output * self.dropMask, output)
 
     if PFout:
@@ -398,9 +387,9 @@ class FCLayer(WeightedLayer):
 
   def bprop(self, grad, input, output, outGrad):
     if self.dropRate > 0.0:
-      #eltwise_mul(grad, self.dropMask)
       gpu_copy_to(grad * self.dropMask, grad)
-    gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
+    #gpu_copy_to(dot(transpose(self.weight), grad), outGrad)
+    gpu_copy_to(transpose( dot( transpose(grad), self.weight ) ), outGrad )
     self.weightGrad = dot(grad, transpose(input))
     add_row_sum_to_vec(self.biasGrad, grad, alpha=0.0)
 
@@ -416,7 +405,7 @@ class SoftmaxLayer(Layer):
     self.batchCorrect = 0
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.outputSize, 1, 1)
+    self.outputShape = (self.outputSize, 1, 1, self.batchSize)
     return self.outputShape
 
   def fprop(self, input, output, train=TRAIN):
@@ -505,12 +494,12 @@ class NeuronLayer(Layer):
       self.neuron = ReluNeuron(e)
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
-    self.batchSize, self.numColor, self.imgSize, _ = image_shape
+    self.numColor, self.imgSize, _, self.batchSize= image_shape
   
   def get_cross_width(self): return 0
 
   def get_output_shape(self):
-    self.outputShape = (self.batchSize, self.numColor, self.imgSize, self.imgSize)
+    self.outputShape = (self.numColor, self.imgSize, self.imgSize, self.batchSize)
     return self.outputShape
 
   def fprop(self, input, output, train=TRAIN):

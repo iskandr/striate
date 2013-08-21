@@ -75,7 +75,7 @@ class Trainer:
     self.regex = re.compile('^test%d-(\d+)\.(\d+)$' % self.test_id)
 
     self.init_data_provider()
-    self.image_shape = (self.batch_size, self.image_color, self.image_size, self.image_size)
+    self.image_shape = (self.image_color, self.image_size, self.image_size, self.batsh_size)
 
     if init_model is not None and 'model_state' in init_model:
       self.train_outputs = init_model['model_state']['train_outputs']
@@ -496,7 +496,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     pprint.pprint(self.fc_stack)
     
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, 1, image_size, image_color, learning_rate, init_model = self.curr_model)
+        save_freq, batch_size, 6, image_size, image_color, learning_rate, init_model = self.curr_model)
 
 
   def report(self):
@@ -527,7 +527,7 @@ class ImageNetLayerwisedTrainer(Trainer):
         l['weightIncr'] = None
         l['biasIncr'] = None
 
-      
+      self.init_data_provider()
       self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = self.curr_model)
       Trainer.train(self)
 
