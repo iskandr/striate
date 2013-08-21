@@ -365,6 +365,7 @@ class DistFastNet(FastNet):
   def fprop(self, data, probs, train = TRAIN):
     fc = False
     input = data
+    local_missing = True if not self.local_grads else False
     for i in range(len(self.layers)):
       l = self.layers[i]
 
@@ -380,12 +381,18 @@ class DistFastNet(FastNet):
       if fc != True:
         padding = l.get_cross_width()
         if padding != 0:
-          d = input.get_cross(padding)
+          d, area = input.get_cross(padding)
         else:
           d = input.get_local()
+          area = input.get_local_area()
         d = d.reshape((d.shape[0] * d.shape[1] * d.shape[2], d.shape[3]))
       else:
         d = input.get_local()
+        area = input.get_local_area()
+
+      if local_missing:
+        self.local_grads.append(gpuarray.zeros(d.shape, dtype = np.float32))
+        self.grads.append(virtual_array(area = area))
 
       if l.type == 'softmax':
         output = self.output
@@ -409,18 +416,32 @@ class DistFastNet(FastNet):
       if l.disableBprop:
         return
       if i == len(self.layers):
-        local_input = data
-      elif l.type == 'fc':
-        local_input = self.outputs[-(i+1)].get_local()
+        input = data
       else:
-        local_input = self.local_outputs[ -(i+1) ]
+        input = self.outputs[-(i+1)]
 
       if l.type in ['pool', 'rnorm', 'cmrnorm', 'conv']:
         fc = False
 
+      if fc != True:
+        padding = l.get_cross_width()
+        if padding != 0:
+          d, area = input.get_cross(padding)
+        else:
+          d = input.get_local()
+        local_input = d.reshape((d.shape[0] * d.shape[1] * d.shape[2], d.shape[3]))
+      else:
+        local_input = input.get_local()
+
+      grad.reduce_add()
       if l.type == 'neuron' and fc:
         grad.distribute(axis = 0)
         grad = grad.get_local()
+      elif not fc:
+        grad.distribute_squre()
+        grad = grad.get_local()
+        grad = grad.reshape((grad.shape[0] * grad.shape[1] * grad.shape[2] , grad.shape[3]))
+
 
       if l.type == 'softmax':
         area = make_plain_area(self.output.shape)
@@ -428,19 +449,14 @@ class DistFastNet(FastNet):
         output.gather()
         output.distribute(axis = 0)
         local_output = output.get_local()
-      elif l.type == 'fc':
+      else:
         local_output = self.local_outputs[-i];
 
       local_outGrad = self.local_grads[-i]
-
       l.bprop(grad, local_input, local_output, local_outGrad)
 
-      if l.type == 'fc':
-        area = make_plain_area(local_outGrad)
-        self.grads[-i].store(local_outGrad, area = area)
-        self.grads[-i].gather()
-        self.grads[-i].add_reduce()
       grad = self.grads[-i]
+      grad.store(local_outGrad, grad.get_local_area())
 
   def prepare_for_train(data, label):
     assert len(data.shape) == 4
@@ -452,6 +468,9 @@ class DistFastNet(FastNet):
       self.imgShapes = None
       self.outputs = []
       self.grads = []
+      self.local_outputs = []
+      self.local_grads = []
+
 
       self.imgShapes = [(self.numColor, self.imgSize / 2, self.imgSize / 2, self.batchSize)]
       self.inputShapes = [(self.numColr * (self.imgSize ** 2) / 4, self.batchSize)]
@@ -475,14 +494,14 @@ class DistFastNet(FastNet):
         self.local_outputs.append(gpuarray.zeros((row, col), dtype =np.float32))
 
         inputShape = self.inputShapes[-2]
-        if layer.type == 'fc':
-          inputShape = (inputShape[0] * comm.Get_size(), inputShape[1])
-          self.local_grads.append(gpuarray.zeors(inputShape, dtype = np.float32))
-          area = make_plain_area(inputShape)
-        else:
-          self.local_grads.append(gpuarray.zeros(inputShape, dtype= np.float32))
-          area = make_area(self.imgShapes[-2])
-        self.grads.append(virtual_array(rank, area = area))
+        #if layer.type == 'fc':
+        #  inputShape = (inputShape[0] * comm.Get_size(), inputShape[1])
+        #  self.local_grads.append(gpuarray.zeors(inputShape, dtype = np.float32))
+        #  area = make_plain_area(inputShape)
+        #else:
+        #  self.local_grads.append(gpuarray.zeros(inputShape, dtype= np.float32))
+        #  area = make_area(self.imgShapes[-2])
+        #self.grads.append(virtual_array(rank, area = area))
 
       area = make_area((self.numColor, self.imgSize / 2, self.imgSize / 2, self.batchSize))
       self.data = virtual_array(rank, local = gpuarray.to_gpu(data.__getitem__(area.to_slice())),

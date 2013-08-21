@@ -237,7 +237,7 @@ class virtual_array(object):
       f = self.dic[self.rank]._from .expand((0, -padding, 0))
       t = self.dic[self.rank]._to.expand((0, 0, padding))
     area = Area(f, t)
-    return self.fetch(area)
+    return self.fetch(area), area
 
   def gather(self):
     self._global = self.fetch(self.area) 
