@@ -569,6 +569,24 @@ class DistFastNet(FastNet):
       self.bprop(self.data, self.label, self.output)
       self.update()
 
+  def get_dumped_layers(self):
+
+    def concatenate(dic, key):
+      if key in dic:
+        tmp = comm.gather(dic[key])
+        comm.barrier()
+        dic[key] = np.concatenate(tmp, axis = 0)
+
+    layer_params = []
+    for layer in self.layers:
+      dic = layer.dump()
+      if layer.type == 'fc':
+        for key in ['weight', 'bias', 'weightIncr', 'biasIncr']:
+          concatenate(dic, key)
+      layer_params.append(dic)
+      return layer_params
+
+
 
 
 def make_area(shape):

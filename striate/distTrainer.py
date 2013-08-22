@@ -4,6 +4,7 @@ from trainer import Trainer
 from striate import fastnet
 from fastnet import DistFastNet
 from striate.layer import TEST, TRAIN
+import argparse
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -23,6 +24,7 @@ class DummyTrainer(Trainer):
       data = comm.bcast(self.train_data, root = 0)
     else:
       data = comm.bcast(self.test_data, root = 0)
+    comm.barrier()
     return data
 
   def train(self):
@@ -52,6 +54,9 @@ class DummyTrainer(Trainer):
       for i in range(self.num_test_minibatch):
         input, label = self.get_next_minibatch(i, TEST)
         self.net.train_batch(input, label, TEST)
+
+  def save_checkpoint(self):
+    self.net.get_dumped_layers()
       
 
 class ServerTrainer(Trainer):
@@ -83,7 +88,8 @@ class ServerTrainer(Trainer):
     if train == TRAIN:
       comm.bcast(self.train_data, root = 0)
     else:
-      comm.bcase(self.test_data, root = 0)
+      comm.bcast(self.test_data, root = 0)
+    comm.barrier()
     
   def train(self):
     self.print_net_summary()
@@ -139,7 +145,6 @@ class ServerTrainer(Trainer):
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
     print >> sys.stderr,  '[%d] error: %f logreg: %f time: %f' % (self.test_data.batchnum, 1 - correct, cost, time.time() - start)
 
-    
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()

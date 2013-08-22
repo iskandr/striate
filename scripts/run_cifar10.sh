@@ -2,7 +2,7 @@
 
 
 python ./striate/trainer.py \
-  --data_dir /ssd/nn-data/cifar-10-py-colmajor \
+  --data_dir /ssd/nn-data/cifar-10-python \
   --param_file ~/striate/striate/fastcifar.cfg \
   --data_provider cifar10 \
   --train_range 1-5 \

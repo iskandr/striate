@@ -5,10 +5,10 @@ from time import sleep
 import util
 from pycuda import gpuarray, driver, autoinit
 from mpi4py import rc
-rc.initialize = False
+#rc.initialize = False
 
 from mpi4py import MPI
-MPI.Init_thread(required=MPI.THREAD_MULTIPLE)
+#MPI.Init_thread(required=MPI.THREAD_MULTIPLE)
 
 COMM = MPI.COMM_WORLD
 rank = COMM.Get_rank()
@@ -195,7 +195,7 @@ class virtual_array(object):
     for rank in send_data:
       send_data_req[rank].wait()
       subs[reqs[rank]] = recv_data_req[rank].wait()
-   COMM.barrier()
+    COMM.barrier()
 
   def fetch(self, area):
     a = self.dic[self.rank]
@@ -302,10 +302,12 @@ class virtual_array(object):
         reqs[rank] = a & area
       self.fetch_remote(reqs, subs)
 
+      local = self.local
       for sub_area, sub_array in subs:
         if sub_array is None:
           continue
-        self.local.__getitem__(sub_area.to_slice) += sub_array
+        slices = sub_area.to_slice()
+        local.__setitem__(slices, local.__getitem__(slices) + sub_array)
       self.gather()
 
 
