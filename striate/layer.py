@@ -17,7 +17,7 @@ class Layer(object):
   def __init__(self, name, type):
     self.name = name
     self.type = type
-    self.diableBprop = False
+    self.disableBprop = False
 
   def fprop(self, input, output, train=TRAIN):
     assert False, "No implementation for fprop"
@@ -26,7 +26,7 @@ class Layer(object):
     assert False, "No implementation for bprop"
 
   def disableBprop(self):
-    self.diableBprop = True
+    self.disableBprop = True
 
   def get_output_shape(self):
     assert False, 'No implementation for getoutputshape'
@@ -103,7 +103,13 @@ class WeightedLayer(Layer):
     self.clear_weight_incr()
     self.clear_bias_incr()
 
-  def update(self):
+  def update(self, weightGrad = None, biasGrad = None):
+
+    if weightGrad is not None:
+      self.weightGrad = weightGrad
+    if biasGrad is not None:
+      self.biasGrad = biasGrad
+
     if self.momW > 0.0:
       matrix_add(self.weightIncr, self.weightGrad, alpha=self.momW, beta=self.epsW / F(self.batchSize))
       matrix_add(self.weightIncr, self.weight, alpha=1, beta= F(-self.wc * self.epsW))
@@ -495,7 +501,7 @@ class NeuronLayer(Layer):
     elif type == 'tanh':
       self.neuron = TanhNeuron(a, b)
     self.numColor, self.imgSize, _, self.batchSize= image_shape
-  
+
   def get_cross_width(self): return 0
 
   def get_output_shape(self):
@@ -574,7 +580,7 @@ class FastNetBuilder(Builder):
     img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
-        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight, 
+        partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr)
     return cv
 
@@ -673,7 +679,7 @@ class CudaconvNetBuilder(FastNetBuilder):
 
     bias = ld.get('biases', None)
     weight = ld.get('weights', None)
-    
+
     filter_shape = (numFilter, numColor, filterSize, filterSize)
     img_shape = ld['imgShape']
     return ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB, 0, 0, epsW, epsB, momW
@@ -722,14 +728,14 @@ class CudaconvNetBuilder(FastNetBuilder):
     n_out = ld['outputs']
     bias = ld.get('biases', None)
     weight = ld.get('weights', None)
-    
-    if bias is not None: 
+
+    if bias is not None:
       bias = bias.transpose()
       bias = np.require(bias, dtype = np.float32, requirements = 'C')
-    if weight is not None: 
+    if weight is not None:
       weight = weight.transpose()
       weight = np.require(weight, dtype = np.float32, requirements = 'C')
-    
+
     name = ld['name']
     input_shape = ld['inputShape']
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW = momW, momB = momB, wc

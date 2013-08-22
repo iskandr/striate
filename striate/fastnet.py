@@ -17,7 +17,7 @@ rank = comm.Get_rank()
 class FastNet(object):
   def __init__(self, learningRate, imgShape, numOutput, init_model = None):
     self.learningRate = learningRate
-    self.batchSize, self.numColor, self.imgSize, _ = imgShape
+    self.numColor, self.imgSize, _ , self.batchSize = imgShape
     self.imgShapes = [imgShape]
     self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
     self.numOutput = numOutput
@@ -125,7 +125,7 @@ class FastNet(object):
     for i in range(1, len(self.layers) + 1):
 
       l = self.layers[-i]
-      if l.diableBprop:
+      if l.disableBprop:
         return
       if i == len(self.layers):
         input = data
@@ -138,7 +138,7 @@ class FastNet(object):
 
   def update(self):
     for l in self.layers:
-      if l.diableBprop or not isinstance(l, WeightedLayer):
+      if l.disableBprop or not isinstance(l, WeightedLayer):
         continue
       l.update()
 
@@ -356,6 +356,22 @@ class AdaptiveFastNet(FastNet):
 
 class DistFastNet(FastNet):
   def __init__(self, learning_rate, image_shape, num_ouput, init_model):
+    if 'model_state' in init_model:
+      model = init_model['model_state']['layers']
+    else:
+      model = init_model
+
+    for layer in model:
+      if layer.type == 'fc':
+        layer['outputSize'] = layer['outputSize'] / comm.Get_size()
+        size = comm.Get_size()
+        if 'weight' in layer:
+          layer['weight'] = np.vsplit(layer['weight'], size)[rank]
+          layer['bias'] = np.vsplit(layer['bias'], size)[rank]
+        if 'weightIncr' in layer:
+          layer['weightIncr'] = np.vsplit(layer['weightIncr'], size)[rank]
+          layer['biasIncr'] = np.vsplit(layers['biasIncr'], size)[rank]
+
     FastNet.__init__(self, learning_rate, image_shape, num_ouput, init_model)
 
   def _log(self, fmt, *args):
@@ -458,6 +474,27 @@ class DistFastNet(FastNet):
       grad = self.grads[-i]
       grad.store(local_outGrad, grad.get_local_area())
 
+
+  def update(self):
+    for layer in self.layers:
+      if layer.disableBprop or not isinstance(layer, WeightedLayer):
+        continue
+      if layer.type == 'fc':
+        layer.update()
+      else:
+        weightGrad, biasGrad = self.weightGrad, self.biasGrad
+        area = make_plain_area(weightGrad)
+        weightGrad = virtual_array(local = weightGrad, area = area)
+        weightGrad.add_reduce()
+        weightGrad = wegihGrad.get_local()
+
+        area = make_plain_area(biasGrad)
+        biasGrad = virtual_array(local = biasGrad, area = area)
+        biasGrad.add_reduce()
+        biasGrad = biasGrad.get_local()
+
+        layer.update(weightGrad, biasGrad)
+
   def prepare_for_train(data, label):
     assert len(data.shape) == 4
     if data.shape[3] != self.batchSize:
@@ -524,6 +561,13 @@ class DistFastNet(FastNet):
   def train_batch(self, data, label, train = TRAIN):
     self.prepare_for_train(data, label)
     self.fprop(self.data, self.output, train)
+    cost, correct = self.get_cost(self.label, self.output)
+    self.cost += cost
+    self.correct += correct
+
+    if train == TRAIN:
+      self.bprop(self.data, self.label, self.output)
+      self.update()
 
 
 
