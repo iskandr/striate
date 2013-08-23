@@ -3,7 +3,7 @@ from pycuda import gpuarray, driver
 from striate import util, layer
 from striate.fastnet import FastNet, AdaptiveFastNet
 from striate.layer import TRAIN, TEST
-from striate.parser import Parser
+from striate.parser import parse_config_file
 from striate.scheduler import Scheduler
 from striate.util import divup, timer, load
 import argparse
@@ -50,6 +50,7 @@ class DataDumper(object):
     self.count += 1
     
 
+# Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
 
 class Trainer:
   CHECKPOINT_REGEX = None
@@ -97,7 +98,6 @@ class Trainer:
     self.train_dumper = None #DataDumper('/scratch1/imagenet-pickle/train-data.pickle')
     self.test_dumper = None #DataDumper('/scratch1/imagenet-pickle/test-data.pickle')
     self.input = None
-
 
   def init_data_provider(self):
     dp = DataProvider.get_by_name(self.data_provider)
@@ -727,7 +727,7 @@ if __name__ == '__main__':
 
   if not cp_files:
     util.log('No checkpoint, starting from scratch.')
-    param_dict['init_model'] = Parser(args.param_file).get_result()
+    param_dict['init_model'] = parse_config_file(args.param_file)
   else:
     cp_file = sorted(cp_files, key=os.path.getmtime)[-1]
     util.log('Loading from checkpoint file: %s', cp_file)

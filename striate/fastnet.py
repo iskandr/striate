@@ -1,16 +1,18 @@
+from mpi4py import MPI
 from pycuda import cumath, gpuarray, driver as cuda
 from pycuda.gpuarray import GPUArray
 from striate import util
 from striate.cuda_kernel import gpu_copy_to, transpose
 from striate.layer import ConvLayer, NeuronLayer, MaxPoolLayer, \
-  ResponseNormLayer, FCLayer, SoftmaxLayer, TRAIN, WeightedLayer, TEST, \
-  FastNetBuilder, CudaconvNetBuilder
+  ResponseNormLayer, FCLayer, SoftmaxLayer, TRAIN, WeightedLayer, TEST
+from striate.parser import is_cudaconvnet_config, add_layers, FastNetBuilder, \
+  CudaconvNetBuilder
 from striate.util import timer
+from virtual import virtual_array, Area
 import numpy as np
 import sys
-from virtual import virtual_array, Area
+  
 
-from mpi4py import MPI
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
@@ -612,14 +614,3 @@ def make_plain_area(shape):
   height, width = shape
   return Area(Point(0, 0), Point(height-1, width-1))
 
-def add_layers(builder, net, model):
-  for layer in model:
-    l = builder.make_layer(net, layer)
-    if l is not None:
-      net.append_layer(l)
-
-def is_cudaconvnet_config(model):
-  for layer in model:
-    if 'filters' in layer or 'channels' in layer:
-      return True
-  return False
