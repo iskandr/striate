@@ -32,24 +32,25 @@ class FastNet(object):
 
     self.numConv = 0
 
-    if init_model is not None:
-      if 'model_state' in init_model:
-        if not is_cudaconvnet_config(init_model):
-          # Loading from a checkpoint
-          add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
-        else:
-          # AlexK config file
-          add_layers(CudaconvNetBuilder(), self, init_model)
+    if init_model is None:
+      util.log('initial model not provided, network doesn\'t have any layer')
+      return
+
+    if 'model_state' in init_model:
+      # Loading from a checkpoint
+      add_layers(FastNetBuilder(), self, init_model['model_state']['layers'])
+    else:
+      if is_cudaconvnet_config(init_model):
+        # AlexK config file
+        add_layers(CudaconvNetBuilder(), self, init_model)
       else:
         # FastNet config file
         add_layers(FastNetBuilder(), self, init_model)
-        self.adjust_learning_rate(self.learningRate)
+      self.adjust_learning_rate(self.learningRate)
 
-      util.log('Learning rates:')
-      for l in self.layers:
-        util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
-    else:
-      util.log('initial model not provided, network doesn\'t have any layer')
+    util.log('Learning rates:')
+    for l in self.layers:
+      util.log('%s: %s %s', l.name, getattr(l, 'epsW', 0), getattr(l, 'epsB', 0))
 
   def save_layerouput(self, layers):
     self.save_layers = layers

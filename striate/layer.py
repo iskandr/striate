@@ -579,6 +579,7 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
+
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
         weightIncr = weightIncr, biasIncr = biasIncr)

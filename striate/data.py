@@ -239,9 +239,10 @@ class CifarDataProvider(ParallelDataProvider):
 
     filename = os.path.join(self.data_dir, 'data_batch_%d' % self.curr_batch)
 
-    self.data = util.load(filename)
-    return BatchData(self.data['data'] - self.batch_meta['data_mean'],
-                     np.array(self.data['labels']),
+    data = util.load(filename)
+    img = data['data'] - self.batch_meta['data_mean']
+    return BatchData(np.require(img, requirements='C', dtype=np.float32),
+                     np.array(data['labels']),
                      self.curr_epoch,
                      self.curr_batch)
 
