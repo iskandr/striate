@@ -22,6 +22,7 @@ class FastNet(object):
     self.numColor, self.imgSize, _ , self.batchSize = imgShape
     self.imgShapes = [imgShape]
     self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
+    print self.inputShapes
     self.numOutput = numOutput
     self.layers = []
     self.outputs = []
@@ -126,7 +127,6 @@ class FastNet(object):
   def bprop(self, data, label, prob, train=TRAIN):
     grad = label
     for i in range(1, len(self.layers) + 1):
-
       l = self.layers[-i]
       if l.disableBprop:
         return
@@ -252,6 +252,10 @@ class FastNet(object):
   def disable_bprop(self):
     for l in self.layers:
       l.disableBprop()
+
+  def enable_bprop(self):
+    for l in self.layers:
+      l.enableBprop()
 
   def get_report(self):
     pass

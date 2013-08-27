@@ -14,10 +14,10 @@ TEST = 0
 TRAIN = 1
 
 class Layer(object):
-  def __init__(self, name, type):
+  def __init__(self, name, type, disableBprop = False):
     self.name = name
     self.type = type
-    self.disableBprop = False
+    self.disableBprop = disableBprop
 
   def fprop(self, input, output, train=TRAIN):
     assert False, "No implementation for fprop"
@@ -27,6 +27,9 @@ class Layer(object):
 
   def disableBprop(self):
     self.disableBprop = True
+
+  def enableBprop(self):
+    self.disableBprop = False
 
   def get_output_shape(self):
     assert False, 'No implementation for getoutputshape'
@@ -49,8 +52,8 @@ def randn(shape, dtype):
 
 class WeightedLayer(Layer):
   def __init__(self, name, type, epsW, epsB, initW, initB, momW, momB, wc, weight, bias,
-      weightIncr , biasIncr, weightShape, biasShape):
-    Layer.__init__(self, name, type)
+      weightIncr , biasIncr, weightShape, biasShape, disableBprop = False):
+    Layer.__init__(self, name, type, disableBprop)
 
     self.epsW = F(epsW)
     self.epsB = F(epsB)
@@ -154,7 +157,8 @@ class WeightedLayer(Layer):
 
 class ConvLayer(WeightedLayer):
   def __init__(self , name, filter_shape, image_shape, padding=2, stride=1, initW=0.01, initB=
-      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0, bias=None, weight=None, weightIncr = None, biasIncr = None):
+      0.0, partialSum = 0, sharedBiases = 0, epsW=0.001, epsB=0.002, momW=0.0, momB=0.0, wc=0.0,
+      bias=None, weight=None, weightIncr = None, biasIncr = None, disableBprop = False):
 
     self.filterSize = filter_shape[2]
     self.numFilter = filter_shape[0]
@@ -173,7 +177,7 @@ class ConvLayer(WeightedLayer):
     self.weightShape = (self.filterSize * self.filterSize * self.numColor, self.numFilter)
     self.biasShape = (self.numFilter, 1)
     WeightedLayer.__init__(self, name, 'conv', epsW, epsB, initW, initB, momW, momB, wc, weight,
-        bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
+        bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
 
 
   def dump(self):
@@ -219,8 +223,8 @@ class ConvLayer(WeightedLayer):
 
 
 class MaxPoolLayer(Layer):
-  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
-    Layer.__init__(self, name, 'pool')
+  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0, disableBprop = False):
+    Layer.__init__(self, name, 'pool', disableBprop)
     self.pool = 'max'
     self.poolSize = poolSize
     self.stride = stride
@@ -249,8 +253,8 @@ class MaxPoolLayer(Layer):
         self.start, self.stride, self.outputSize, 0.0, 1.0)
 
 class AvgPoolLayer(Layer):
-  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0):
-    Layer.__init__(self, name, 'pool')
+  def __init__(self, name, image_shape, poolSize=2, stride=2, start=0, disableBprop = False):
+    Layer.__init__(self, name, 'pool', disableBprop)
     self.pool = 'avg'
     self.poolSize = poolSize
     self.stride = stride
@@ -278,8 +282,8 @@ class AvgPoolLayer(Layer):
         self.start, self.stride, self.outputSize, self.imgSize, 0.0, 1.0)
 
 class ResponseNormLayer(Layer):
-  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001):
-    Layer.__init__(self, name, 'rnorm')
+  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, disableBprop = False):
+    Layer.__init__(self, name, 'rnorm', disableBprop)
     self.numColor, self.imgSize, _, self.batchSize= image_shape
     self.imgShape = image_shape
 
@@ -314,8 +318,9 @@ class ResponseNormLayer(Layer):
 
 
 class CrossMapResponseNormLayer(ResponseNormLayer):
-  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False):
-    ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale)
+  def __init__(self, name, image_shape, pow=0.75, size=9, scale=0.001, blocked=False, disableBprop =
+      False):
+    ResponseNormLayer.__init__(self, name, image_shape, pow, size, scale, disableBprop)
     self.type = 'cmrnorm'
     self.scaler = self.scale / self.size
     self.blocked = blocked
@@ -342,7 +347,7 @@ class CrossMapResponseNormLayer(ResponseNormLayer):
 class FCLayer(WeightedLayer):
   def __init__(self, name, input_shape, n_out, epsW=0.001, epsB=0.002, initW=0.01, initB=0.0,
       momW=0.0, momB=0.0, wc=0.0, dropRate=0.0, weight=None, bias=None, weightIncr = None, biasIncr
-      = None):
+      = None, disableBprop = False):
     self.inputShape = input_shape
     self.inputSize, self.batchSize = input_shape
 
@@ -352,7 +357,7 @@ class FCLayer(WeightedLayer):
     self.weightShape = (self.outputSize, self.inputSize)
     self.biasShape = (self.outputSize, 1)
     WeightedLayer.__init__(self, name, 'fc', epsW, epsB, initW, initB, momW, momB, wc, weight,
-        bias, weightIncr, biasIncr, self.weightShape, self.biasShape)
+        bias, weightIncr, biasIncr, self.weightShape, self.biasShape, disableBprop)
     util.log('%s dropRate: %s', self.name, self.dropRate)
 
 
@@ -402,8 +407,8 @@ class FCLayer(WeightedLayer):
 
 
 class SoftmaxLayer(Layer):
-  def __init__(self, name, input_shape):
-    Layer.__init__(self, name, "softmax")
+  def __init__(self, name, input_shape, disableBprop = False):
+    Layer.__init__(self, name, "softmax", disableBprop)
     self.inputShape = input_shape
     self.inputSize, self.batchSize = input_shape
     self.outputSize = self.inputSize
@@ -493,8 +498,8 @@ class TanhNeuron(Neuron):
     return d
 
 class NeuronLayer(Layer):
-  def __init__(self, name, image_shape, type='relu', a=1.0, b=1.0, e=0.0):
-    Layer.__init__(self, name, 'neuron')
+  def __init__(self, name, image_shape, type='relu', a=1.0, b=1.0, e=0.0, disableBprop = False):
+    Layer.__init__(self, name, 'neuron', disableBprop)
     self.imgShape = image_shape
     if type == 'relu':
       self.neuron = ReluNeuron(e)

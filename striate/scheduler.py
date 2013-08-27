@@ -68,8 +68,3 @@ class SmoothScheduler(Scheduler):
       self.step = self.step_level[-1]
     else:
       self.step = self.step_level[level]
-
-
-class IncrementScheduler(Scheduler):
-  def __init__(self, trainer):
-    Scheduler.__init__(self, trainer)

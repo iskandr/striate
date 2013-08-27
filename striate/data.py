@@ -19,8 +19,9 @@ BatchData = collections.namedtuple('BatchData',
 
 dp_dict = {}
 
+
+
 class DataProvider(object):
-  BATCH_REGEX = re.compile('^data_batch_(\d+)$')
   def __init__(self, data_dir='.', batch_range=None):
     self.data_dir = data_dir
     self.meta_file = os.path.join(data_dir, 'batches.meta')
@@ -173,7 +174,7 @@ class ImageNetDataProvider(ParallelDataProvider):
     self.curr_batch = self.batch_range[self.curr_batch_index]
     if self.curr_batch_index == 0:
       self.curr_epoch += 1
-    
+
     epoch = self.curr_epoch
     batchnum = self.curr_batch
     names = self.images[self.batches[batchnum]]
@@ -222,13 +223,14 @@ class ImageNetDataProvider(ParallelDataProvider):
   # idx is the index of the matrix.
   def get_data_dims(self, idx=0):
     return self.inner_size ** 2 * 3 if idx == 0 else 1
-  
+
   @property
   def image_shape(self):
     return (3, self.inner_size, self.inner_size)
 
 
 class CifarDataProvider(ParallelDataProvider):
+  BATCH_REGEX = re.compile('^data_batch_(\d+)$')
   def _get_next_batch(self):
     self.get_next_index()
     if self.curr_batch_index == 0:
@@ -247,12 +249,12 @@ class CifarDataProvider(ParallelDataProvider):
                      self.curr_batch)
 
   def get_batch_filenames(self):
-    return sorted([f for f in os.listdir(self.data_dir) if DataProvider.BATCH_REGEX.match(f)], key=alphanum_key)
+    return sorted([f for f in os.listdir(self.data_dir) if CifarDataProvider.BATCH_REGEX.match(f)], key=alphanum_key)
 
   def get_batch_indexes(self):
     names = self.get_batch_filenames()
     return sorted(list(set(int(DataProvider.BATCH_REGEX.match(n).group(1)) for n in names)))
-  
+
   @property
   def image_shape(self):
     return (3, 32, 32)
@@ -272,11 +274,34 @@ class ImageNetCateGroupDataProvider(ImageNetDataProvider):
     return BatchData(data.data, labels, data.epoch, data.batchnum)
 
 
+class IntermediateDataProvider(ParallelDataProvider):
+  def __init__(self, data_dir, batch_range, data_name):
+    ParallelDataProvider.__init__(self, data_dir, batch_range)
+    self.data_name = data_name
+
+  def _get_next_batch(self):
+    self.get_next_index()
+
+    if self.curr_batch_index == 0:
+      random.shuffle(self.batch_range)
+      self.curr_epoch += 1
+    self.curr_batch = self.batch_range[self.curr_batch_index]
+
+    filename = os.path.join(self.data_dir + '.%s' % self.curr_batch)
+
+    data_dic = util.load(filename)
+    #data = np.concantenate([data[self.data_name] for data in data_list], axis = 1)
+    #labels = np.concatenate([np.array( data['labels'].tolist() ) for data in data_list])
+    data  = data_dic[self.data_name].transpose()
+    labels = data_dic['labels']
+    return BatchData(np.require(data, requirements='C', dtype=np.float32),
+        labels, self.curr_epoch, self.curr_batch)
 
 
 DataProvider.register_data_provider('cifar10', CifarDataProvider)
 DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
 DataProvider.register_data_provider('imagenetcategroup', ImageNetCateGroupDataProvider)
+DataProvider.register_data_provider('intermediate', IntermediateDataProvider)
 
 
 if __name__ == "__main__":

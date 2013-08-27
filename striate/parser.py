@@ -84,9 +84,10 @@ class FastNetBuilder(Builder):
     name = Builder.set_val(ld, 'name')
     img_shape = Builder.set_val(ld, 'imgShape')
     filter_shape = (numFilter, numColor, filterSize, filterSize)
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     cv = ConvLayer(name, filter_shape, img_shape, padding, stride, initW, initB,
         partialSum,sharedBiases, epsW, epsB, momW, momB, wc, bias, weight,
-        weightIncr = weightIncr, biasIncr = biasIncr)
+        weightIncr = weightIncr, biasIncr = biasIncr, disableBprop = disableBprop)
     return cv
 
   def pool_layer(self, ld):
@@ -96,10 +97,11 @@ class FastNetBuilder(Builder):
     img_shape = Builder.set_val(ld, 'imgShape')
     name = Builder.set_val(ld, 'name')
     pool = Builder.set_val(ld, 'pool', default = 'max')
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     if pool == 'max':
-      return MaxPoolLayer(name, img_shape, poolSize, stride, start)
+      return MaxPoolLayer(name, img_shape, poolSize, stride, start, disableBprop = disableBprop)
     elif pool == 'avg':
-      return AvgPoolLayer(name, img_shape, poolSize, stride, start)
+      return AvgPoolLayer(name, img_shape, poolSize, stride, start, disableBprop = disableBprop)
 
   def crm_layer(self, ld):
     name = Builder.set_val(ld, 'name')
@@ -108,24 +110,28 @@ class FastNetBuilder(Builder):
     scale = Builder.set_val(ld, 'scale')
     image_shape = Builder.set_val(ld, 'imgShape')
     blocked = bool(Builder.set_val(ld, 'blocked', default = 0))
-    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked)
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
+    return CrossMapResponseNormLayer(name, image_shape, pow, size, scale, blocked, disableBprop =
+        disableBprop)
 
   def softmax_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     input_shape = Builder.set_val(ld, 'inputShape')
-    return SoftmaxLayer(name, input_shape)
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
+    return SoftmaxLayer(name, input_shape, disableBprop = disableBprop)
 
   def neuron_layer(self, ld):
     name = Builder.set_val(ld, 'name')
     img_shape = Builder.set_val(ld, 'imgShape')
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     if ld['neuron'] == 'relu':
       e = Builder.set_val(ld, 'e')
-      return NeuronLayer(name, img_shape, type='relu', e=e)
+      return NeuronLayer(name, img_shape, type='relu', e=e, disableBprop = disableBprop)
 
     if ld['neuron'] == 'tanh':
       a = Builder.set_val(ld, 'a')
       b = Builder.set_val(ld, 'b')
-      return NeuronLayer(name, img_shape, type='tanh', a=a, b=b)
+      return NeuronLayer(name, img_shape, type='tanh', a=a, b=b, disableBprop = disableBprop)
 
     assert False, 'No implementation for the neuron type' + ld['neuron']['type']
 
@@ -135,7 +141,8 @@ class FastNetBuilder(Builder):
     size = Builder.set_val(ld, 'size')
     scale = Builder.set_val(ld, 'scale')
     image_shape = Builder.set_val(ld, 'imgShape')
-    return ResponseNormLayer(name, image_shape, pow, size, scale)
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
+    return ResponseNormLayer(name, image_shape, pow, size, scale, disableBprop = disableBprop)
 
 
   def fc_layer(self, ld):
@@ -158,8 +165,9 @@ class FastNetBuilder(Builder):
     biasIncr = Builder.set_val(ld, 'biasIncr')
     name = Builder.set_val(ld, 'name')
     input_shape = Builder.set_val(ld, 'inputShape')
+    disableBprop = Builder.set_val(ld, 'disableBprop', default = False)
     return FCLayer(name, input_shape, n_out, epsW, epsB, initW, initB, momW, momB, wc, dropRate,
-        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr)
+        weight, bias, weightIncr = weightIncr, biasIncr = biasIncr, disableBprop = disableBprop)
 
 
 

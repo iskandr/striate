@@ -22,7 +22,7 @@ class DataDumper(object):
     self.data = []
     self.sz = 0
     self.count = 0
-    self.max_mem_size = 500e6
+    self.max_mem_size = 500e5
 
   def add(self, data):
     for k, v in data.iteritems():
@@ -48,6 +48,8 @@ class DataDumper(object):
     self.data = []
     self.sz = 0
     self.count += 1
+
+  def get_count(self):return self.count
 
 
 # Trainer should take: (training dp, test dp, fastnet, checkpoint dir)
@@ -95,9 +97,17 @@ class Trainer:
     self.num_test_minibatch = 0
     self.checkpoint_file = ''
 
-    self.train_dumper = None #DataDumper('/scratch1/imagenet-pickle/train-data.pickle')
-    self.test_dumper = None #DataDumper('/scratch1/imagenet-pickle/test-data.pickle')
+    self.train_output_filename = '/tmp/imagenet-pickle/train-data.pickle'
+    self.test_output_filename = '/tmp/imagenet-pickle/test-data.pickle'
+    self.train_dumper = DataDumper(self.train_output_filename)
+    self.test_dumper = DataDumper(self.test_output_filename)
     self.input = None
+
+
+  def init_output_dumper(self):
+    self.train_dumper = DataDumper(self.train_output_filename)
+    self.test_dumper = DataDumper(self.test_output_filename)
+
 
   def init_data_provider(self):
     dp = DataProvider.get_by_name(self.data_provider)
@@ -126,10 +136,6 @@ class Trainer:
       self.input = gpuarray.to_gpu(locked_data)
 
     label = batch_label[i * batch_size : (i + 1) * batch_size]
-    #label = gpuarray.to_gpu(label)
-
-    #label = gpuarray.to_gpu(np.require(batch_label[i * batch_size : (i + 1) * batch_size],  dtype =
-    #  np.float, requirements = 'C'))
 
     return self.input, label
 
@@ -202,6 +208,9 @@ class Trainer:
     if self.test_dumper is not None:
       self.test_dumper.flush()
 
+  def should_capture_training_data(self):
+    return self.curr_epoch == self.num_epoch
+
   def _capture_training_data(self):
     if not self.train_dumper:
       return
@@ -231,7 +240,8 @@ class Trainer:
         input, label = self.get_next_minibatch(i)
         stime = time.time()
         self.net.train_batch(input, label)
-        self._capture_training_data()
+        if self.should_capture_training_data():
+          self._capture_training_data()
         t += time.time() - stime
         self.curr_minibatch += 1
 
@@ -481,36 +491,50 @@ class ImageNetLayerwisedTrainer(Trainer):
     conv = True
     for ld in init_model:
       if ld['type'] in ['conv', 'rnorm', 'pool', 'neuron'] and conv:
-        self.conv_params.append(ld)
+        #self.conv_params.append(ld)
+        self.curr_model.append(ld)
       elif ld['type'] == 'fc' or (not conv and ld['type'] == 'neuron'):
         self.fc_params.append(ld)
         conv = False
       else:
         self.softmax_param = ld
 
-    self.conv_stack = FastNet.split_conv_to_stack(self.conv_params)
+    #self.conv_stack = FastNet.split_conv_to_stack(self.conv_params)
+    #for i in range(3):
+    #  self.curr_model.extend(self.conv_stack[i])
+
     self.fc_stack = FastNet.split_fc_to_stack(self.fc_params)
-
-
-    for i in range(3):
-      self.curr_model.extend(self.conv_stack[i])
-
-    tmp = self.conv_stack[3:]
-    tmp.extend(self.fc_stack)
-    self.stack = tmp
-    pprint.pprint(self.stack)
+    #tmp = self.conv_stack[3:]
+    #tmp.extend(self.fc_stack)
+    #self.stack = tmp
+    self.stack = self.fc_stack
 
     self.curr_model.append(self.stack[-1][0])
     self.curr_model.append(self.softmax_param)
     del self.stack[-1]
     pprint.pprint(self.stack)
 
+    self.layerwised = True
     Trainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range, test_freq,
-        save_freq, batch_size, 1, image_size, image_color, learning_rate, init_model = self.curr_model)
+        save_freq, batch_size, 3, image_size, image_color, learning_rate, init_model = self.curr_model)
 
 
   def report(self):
     pass
+
+  def should_continue_training(self):
+    #if self.layerwised and self.curr_epoch == 2:
+    #  self.net.enable_bprop()
+    return self.curr_epoch <= self.num_epoch
+
+  def init_subnet_data_provider(self):
+    dp = DataProvider.get_by_name('intermediate')
+    count = self.train_dumper.get_count()
+    print count, 'train'
+    self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
+    count = self.test_dumper.get_count()
+    print count, 'test'
+    self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
 
   def train(self):
     Trainer.train(self)
@@ -520,22 +544,53 @@ class ImageNetLayerwisedTrainer(Trainer):
       self.num_batch = self.curr_epoch = self.curr_batch = 0
       self.curr_minibatch = 0
 
-      stack[0]['epsW'] *= self.learning_rate
-      stack[0]['epsB'] *= self.learning_rate
-      self.curr_model['model_state']['layers'].insert(-2, stack[0])
-      self.curr_model['model_state']['layers'].insert(-2, stack[1])
+      l = self.curr_model['model_state']['layers'][-2]
+      assert l['type'] == 'fc'
+
+      l['weight'] = None
+      l['bias'] = None
+      l['weightIncr'] = None
+      l['biasIncr'] = None
 
       if i == len(self.stack) - 1:
         self.num_epoch = self.final_num_epoch
-      else:
-        l = self.curr_model['model_state']['layers'][-2]
-        assert l['type'] == 'fc'
 
-        l['weight'] = None
-        l['bias'] = None
-        l['weightIncr'] = None
-        l['biasIncr'] = None
+      layers = self.curr_model['model_state']['layers']
+      model = [stack[0], stack[1], layers[-2], layers[-1]]
 
+      self.init_subnet_data_provider()
+
+      self.train_dumper = None
+      self.test_dumper = None
+
+      shape = self.curr_model['model_state']['layers'][-3]['outputShape']
+      size= shape[0] * shape[1] * shape[2]
+      self.image_shape = (size, 1, 1, self.batch_size)
+      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
+
+      self.old_num_epoch = self.num_epoch
+      self.num_epoch = 1
+      Trainer.train(self)
+
+      self.num_batch = self.curr_epoch = self.curr_batch = 0
+      self.curr_minibatch = 0
+
+      self.num_epoch = self.old_num_epoch - self.num_epoch
+
+      self.image_shape = (self.image_color, self.image_size, self.image_size, self.batch_size)
+      del layers[-1], layers[-1]
+      layers.extend(self.net.get_dumped_layers())
+
+      #for layer in self.curr_model['model_state']['layers'][:-2]:
+      #  layer['disableBprop'] = True
+
+      #stack[0]['epsW'] *= self.learning_rate
+      #stack[0]['epsB'] *= self.learning_rate
+      #self.curr_model['model_state']['layers'].insert(-2, stack[0])
+      #self.curr_model['model_state']['layers'].insert(-2, stack[1])
+
+
+      self.init_output_dumper()
       self.init_data_provider()
       self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = self.curr_model)
       Trainer.train(self)

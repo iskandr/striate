@@ -941,7 +941,10 @@ def matrix_add(src, v, dest=None, alpha=1.0, beta=1.0):
   sh, sw = src.shape
   vh, vw = v.shape
 
-  assert sh == vh and sw == vw
+  #assert sh == vh and sw == vw
+  if sh != vh or sw != vw:
+    print '(%s, %s) + (%s, %s)' % (sh, sw, vh, vw)
+    assert False
 
   block = (32, 32, 1)
   grid = (divup(sw, 32), divup(sh, 32))
