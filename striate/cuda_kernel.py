@@ -517,7 +517,7 @@ _gpu_partial_copy_to_ = CompiledSource('''
       if( j >= row_to - row_from) return;
 
       int sidx = i+col_from  + (j+ row_from) * sleading;
-      int didx = i + j* dleading;
+      int didx = i+ j  * dleading;
 
       dest[didx] = src[sidx];
     }''', 'gpu_partial_copy_to')
@@ -877,8 +877,6 @@ def gpu_partial_copy_to(x, y, row_from, row_to, col_from, col_to):
   row_to = min(row_to, mh)
   col_to = min(col_to, mw)
   r, c = row_to - row_from, col_to - col_from
-
-  assert (r, c) == y.shape
 
   block = (32, 32, 1)
   grid = (divup(c, 32), divup(r, 32))

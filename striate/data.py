@@ -1,4 +1,6 @@
 from PIL import Image
+from pycuda import gpuarray, driver
+from cuda_kernel import gpu_partial_copy_to, print_matrix
 from os.path import basename
 from striate import util
 import Queue
@@ -12,9 +14,8 @@ import re
 import sys
 import threading
 import time
-
 BatchData = collections.namedtuple('BatchData',
-                                   ['data', 'labels', 'epoch', 'batchnum'])
+                                   ['data', 'labels', 'epoch'])
 
 
 dp_dict = {}
@@ -41,14 +42,40 @@ class DataProvider(object):
     else:
       self.batch_range = batch_range
     random.shuffle(self.batch_range)
+    self.data_on_GPU = None
+    self.data = None
+    self.labels = None
+    self.index = 0
 
+  def copy_to_GPU(self):
+      self.data_on_GPU = gpuarray.to_gpu(self.data.astype(np.float32))
 
   def get_next_index(self):
     self.curr_batch_index = (self.curr_batch_index + 1) % len(self.batch_range)
     return self.curr_batch_index
 
-  def get_next_batch(self):
-    return self._get_next_batch()
+  def get_next_batch(self, batch_size):
+    if self.data_on_GPU is  None:
+      self._get_next_batch()
+      self.copy_to_GPU()
+
+    height, width = self.data_on_GPU.shape
+    if self.index + batch_size >  width:
+      labels = self.labels[self.index:]
+      width = width - self.index
+      data = gpuarray.zeros((height, width), dtype = np.float32)
+      gpu_partial_copy_to(self.data_on_GPU, data, 0, height, self.index, self.index + width)
+      self._get_next_batch()
+      self.copy_to_GPU()
+      self.index = 0
+    else:
+      data = gpuarray.zeros((height, batch_size), dtype = np.float32)
+      gpu_partial_copy_to(self.data_on_GPU, data, 0, height, self.index, self.index + batch_size)
+      labels = self.labels[self.index:self.index + batch_size]
+      self.index += batch_size
+    return BatchData(data, labels, self.curr_epoch)
+
+
 
   def del_batch(self, batch):
     print 'delete batch', batch
@@ -80,6 +107,9 @@ class ParallelDataProvider(DataProvider):
     self._reader = None
     self._batch_return = None
     self._data_queue = Queue.Queue(1)
+    self.reserved_epoch = 0
+    self.reserved_labels = None
+    self.reserved_data_on_GPU = None
 
   def _start_read(self):
     assert self._reader is None
@@ -89,14 +119,41 @@ class ParallelDataProvider(DataProvider):
 
   def run_in_back(self):
     while 1:
-      result = self._get_next_batch()
-      self._data_queue.put(result)
+      self._get_next_batch()
+      self._data_queue.put(1)
 
-  def get_next_batch(self):
+  def _fill_reserved_data(self):
+    while self._data_queue.qsize() == 0:
+      time.sleep(0.001)
+    self.copy_to_GPU()
+    self.reserved_epoch = self.curr_epoch
+    self.reserved_labels = self.labels.copy()
+    self.reserved_data_on_GPU = self.data_on_GPU.copy()
+    self._data_queue.get()
+
+  def get_next_batch(self, batch_size):
     if self._reader is None:
       self._start_read()
 
-    return self._data_queue.get()
+    if self.data_on_GPU is None:
+      self._fill_reserved_data()
+
+    height, width = self.reserved_data_on_GPU.shape
+    if self.index + batch_size >  width:
+      labels = self.reserved_labels[self.index:]
+      width = width - self.index
+      data = gpuarray.zeros((height, width), dtype = np.float32)
+      gpu_partial_copy_to(self.reserved_data_on_GPU, data, 0, height, self.index, self.index + width)
+      self.index = 0
+      self._fill_reserved_data()
+    else:
+      data = gpuarray.zeros((height, batch_size), dtype = np.float32)
+      gpu_partial_copy_to(self.reserved_data_on_GPU, data, 0, height, self.index, self.index + batch_size)
+      labels = self.reserved_labels[self.index:self.index + batch_size]
+      self.index += batch_size
+    return BatchData(data, labels, self.reserved_epoch)
+
+
 
 
 class ImageNetDataProvider(ParallelDataProvider):
@@ -217,7 +274,9 @@ class ImageNetDataProvider(ParallelDataProvider):
     # util.log("Loaded %d images in %.2f seconds (%.2f _load, %.2f align)",
     #         num_imgs, time.time() - start, load_time, align_time)
     # self.data = {'data' : SharedArray(cropped), 'labels' : SharedArray(labels)}
-    return BatchData(cropped, labels, epoch, batchnum)
+    self.data = cropped
+    self.labels = labels
+    #return cropped, labels, epoch
 
   # Returns the dimensionality of the two data matrices returned by get_next_batch
   # idx is the index of the matrix.
@@ -243,10 +302,9 @@ class CifarDataProvider(ParallelDataProvider):
 
     data = util.load(filename)
     img = data['data'] - self.batch_meta['data_mean']
-    return BatchData(np.require(img, requirements='C', dtype=np.float32),
-                     np.array(data['labels']),
-                     self.curr_epoch,
-                     self.curr_batch)
+    self.labels = np.array(data['labels'])
+    self.data = np.require(img, requirements='C', dtype=np.float32)
+    #return data, self.labels, self.curr_epoch
 
   def get_batch_filenames(self):
     return sorted([f for f in os.listdir(self.data_dir) if CifarDataProvider.BATCH_REGEX.match(f)], key=alphanum_key)
@@ -271,7 +329,8 @@ class ImageNetCateGroupDataProvider(ImageNetDataProvider):
     data = ImageNetDataProvider._get_next_batch(self)
     labels = data.labels / (ImageNetCateGroupDataProvider.TOTAL_CATEGORY / self.num_group)
     labels = labels.astype(np.int).astype(np.float)
-    return BatchData(data.data, labels, data.epoch, data.batchnum)
+    self.labels = labels
+    #return data.data, labels, data.epoch
 
 
 class IntermediateDataProvider(ParallelDataProvider):
@@ -294,8 +353,10 @@ class IntermediateDataProvider(ParallelDataProvider):
     #labels = np.concatenate([np.array( data['labels'].tolist() ) for data in data_list])
     data  = data_dic[self.data_name].transpose()
     labels = data_dic['labels']
-    return BatchData(np.require(data, requirements='C', dtype=np.float32),
-        labels, self.curr_epoch, self.curr_batch)
+    self.labels = labels
+    data = np.require(data, requirements='C', dtype=np.float32)
+    self.data = data
+    #return data, labels, self.curr_epoch
 
 
 DataProvider.register_data_provider('cifar10', CifarDataProvider)
@@ -305,9 +366,13 @@ DataProvider.register_data_provider('intermediate', IntermediateDataProvider)
 
 
 if __name__ == "__main__":
-  data_dir = '/ssd/nn-data/imagenet/'
-  dp = ImageNetDataProvider(data_dir, range(1300))
+  data_dir = '/ssd/nn-data/cifar-10.old/'
+  dp = CifarDataProvider(data_dir, range(1, 40))
+  batch_size = 128
   # data_dir = '/hdfs/cifar/data/cifar-10-python/'
   # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
   for i in range(11000):
-    data = dp.get_next_batch()
+    data = dp.get_next_batch(batch_size)
+    print data.data.shape, data.labels.shape, data.epoch
+    data = data.data
+    print_matrix(data, 'data')

@@ -19,4 +19,3 @@ import cudaconv2
 # dev = driver.Device(device_info[0])
 
 CONTEXT = cudaconv2.init()
-
