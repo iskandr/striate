@@ -11,142 +11,101 @@ rank = comm.Get_rank()
 
 
 class DummyTrainer(Trainer):
-  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-      init_model, adjust_freq = 1, factor = 1.0):
-    Trainer.__init__(self, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-        test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-        init_model = None, adjust_freq = adjust_freq, factor = factor)
-    self.net = DistFastNet(self.learning_rate, self.image_shape, self.n_out, init_model)
+  def _finish_init(self):
+    self.net = DistFastNet(self.learning_rate, self.image_shape, self.n_out, self.init_model)
 
-  def get_from_master(self, train = TRAIN):
-    if train == TRAIN:
-      data = comm.bcast(self.train_data, root = 0)
-    else:
-      data = comm.bcast(self.test_data, root = 0)
+  def get_from_master(self, data):
+    data = comm.bcast(data, root = 0)
     comm.barrier()
     return data
 
   def train(self):
     util.log('rank %d starting training...' % rank)
     while self.should_continue_training():
-      self.train_data = self.get_from_master(TRAIN)
+      train_data = self.get_from_master(None)
       self.curr_epoch = self.train_data.epoch
-      self.curr_batch = self.train_data.batchnum
 
-      self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
-      for i in range(self.num_train_minibatch):
-        input, label = self.get_next_minibatch(i)
-        self.net.train_batch(input, label)
-        self.curr_minbatch += 1
-      
-      self.num_batch += 1
+      input, label = train_data.data, train_data.labels
+      self.net.train_batch(input, label)
+      self.curr_batch += 1
+
       if self.check_test_data():
         self.get_test_error()
 
       if self.factor != 1.0 and self.check_adjust_lr():
-        self.net_adjust_learning_rate(self.factor)
+        self.adjust_lr()
 
   def get_test_error(self):
-      self.test_data = self.get_from_master(TEST)
-
-      self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
-      for i in range(self.num_test_minibatch):
-        input, label = self.get_next_minibatch(i, TEST)
-        self.net.train_batch(input, label, TEST)
+      test_data = self.get_from_master(None)
+      input, label = test_data.data, test_data.labels
+      self.net.train_batch(input, label, TEST)
 
   def save_checkpoint(self):
     self.net.get_dumped_layers()
-      
+
 
 class ServerTrainer(Trainer):
-  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-      test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-      init_model, adjust_freq = 1, factor = 1.0):
-    Trainer.__init__(self, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-        test_freq, save_freq, batch_size, num_epoch, image_size, image_color, learning_rate,
-        init_model = None, adjust_freq = adjust_freq, factor = factor)
-    self.net = DistFastNet(self.learning_rate, self.image_shape, self.n_out, init_model)
+  def _finish_init(self):
+    self.net = DistFastNet(self.learning_rate, self.image_shape, self.init_model)
 
-  def get_next_minibatch(self, i, train=TRAIN):
-    if train == TRAIN:
-      data = self.train_data
-    else:
-      data = self.test_data
-
-    batch_data = data.data
-    batch_label = data.labels
+  def reshape_data(self, data):
+    batch_data = data.data.get()
     batch_size = self.batch_size
 
-    mini_data = batch_data[:, i * batch_size: (i + 1) * batch_size]
-    num_case = mini_data.size / (self.image_color * self.image_size * self.image_size)
-    mini_data = mini_data.reshape((self.image_color, self.image_size, self.image_size, num_case))
-    label = batch_label[i * batch_size : (i + 1) * batch_size]
-    return mini_data, label
+    num_case = batch_data.size / (self.image_color * self.image_size * self.image_size)
+    batch_data = batch_data.reshape((self.image_color, self.image_size, self.image_size, num_case))
+    data.data = batch_data
 
-  def scatter_to_worker(self, train = TRAIN):
-    if train == TRAIN:
-      comm.bcast(self.train_data, root = 0)
-    else:
-      comm.bcast(self.test_data, root = 0)
+  def scatter_to_worker(self, data):
+    comm.bcast(data, root = 0)
     comm.barrier()
-    
+
   def train(self):
     self.print_net_summary()
     util.log('Starting training...')
     while self.should_continue_training():
-      self.train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
-      self.scatter_to_worker(TRAIN)
-      self.curr_epoch = self.train_data.epoch
-      self.curr_batch = self.train_data.batchnum
+      train_data = self.train_dp.get_next_batch()  # self.train_dp.wait()
+      self.reshape_data(train_data)
+      self.scatter_to_worker(train_data)
+      self.curr_epoch = train_data.epoch
 
-      start = time.time()
-      self.num_train_minibatch = divup(self.train_data.data.shape[1], self.batch_size)
-      
-      for i in range(self.num_train_minibatch):
-        input, label = self.get_next_minibatch(i)
-        self.net.train_batch(input, label)
-        self.curr_minibatch += 1
+      input, label = train_data.data, train_data.labels
+      self.net.train_batch(input, label)
 
+      self.curr_batch += 1
       cost , correct, numCase = self.net.get_batch_information()
       self.train_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
       print >> sys.stderr,  '%d.%d: error: %f logreg: %f time: %f' % (self.curr_epoch, self.curr_batch, 1 - correct, cost, time.time() - start)
 
       self.num_batch += 1
       if self.check_test_data():
-        print >> sys.stderr,  '---- test ----'
         self.get_test_error()
-      print >> sys.stderr,  '------------'
 
-    if self.factor != 1.0 and self.check_adjust_lr():
-      print >> sys.stderr,  '---- adjust learning rate ----'
-      self.net.adjust_learning_rate(self.factor)
-      print >> sys.stderr,  '--------'
+      if self.factor != 1.0 and self.check_adjust_lr():
+        self.adjust_lr()
 
-    if self.check_save_checkpoint():
-      print >> sys.stderr,  '---- save checkpoint ----'
-      self.save_checkpoint()
-      print >> sys.stderr,  '------------'
+      if self.check_save_checkpoint():
+        self.save_checkpoint()
 
     self.get_test_error()
     self.save_checkpoint()
-  
+
   def get_test_error(self):
     start = time.time()
-    self.test_data = self.test_dp.get_next_batch()
-    self.scatter_to_worker(TEST)
+    test_data = self.test_dp.get_next_batch()
+    self.reshape_data(test_data)
+    self.scatter_to_worker(test_data)
 
-    self.num_test_minibatch = divup(self.test_data.data.shape[1], self.batch_size)
-    for i in range(self.num_test_minibatch):
-      input, label = self.get_next_minibatch(i, TEST)
-      self.net.train_batch(input, label, TEST)
-    
+    input, label = test_data.data, test_data.labels
+    self.net.train_batch(input, label, TEST)
+
     cost , correct, numCase, = self.net.get_batch_information()
     self.test_outputs += [({'logprob': [cost, 1 - correct]}, numCase, time.time() - start)]
-    print >> sys.stderr,  '[%d] error: %f logreg: %f time: %f' % (self.test_data.batchnum, 1 - correct, cost, time.time() - start)
+    print >> sys.stderr,  'error: %f logreg: %f time: %f' % (1 - correct, cost, time.time() - start)
 
 
 if __name__ == '__main__':
+
   parser = argparse.ArgumentParser()
   parser.add_argument('--test_id', help = 'Test Id', default = None, type = int)
   parser.add_argument('--data_dir', help = 'The directory that data stored')
@@ -167,11 +126,11 @@ if __name__ == '__main__':
 
 
   # extra argument
-  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_minibatch']
+  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch']
   parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
-  parser.add_argument('--num_minibatch', help = 'The number of minibatch you want to train(num*1000)')
+  parser.add_argument('--num_batch', help = 'The number of minibatch you want to train(num*1000)')
 
   args = parser.parse_args()
 
@@ -191,7 +150,7 @@ if __name__ == '__main__':
     param_dict['image_size'] = 32
   else:
     assert False, 'Unknown data_provider %s' % args.data_provider
- 
+
   param_dict['train_range'] = util.string_to_int_list(args.train_range)
   param_dict['test_range'] = util.string_to_int_list(args.test_range)
   param_dict['save_freq'] = args.save_freq
@@ -214,18 +173,39 @@ if __name__ == '__main__':
   param_dict['checkpoint_dir'] = args.checkpoint_dir
   trainer = args.trainer
 
-  cp_pattern = param_dict['checkpoint_dir'] + '/test%d$' % param_dict['test_id']
-  cp_files = glob.glob('%s*' % cp_pattern)
 
-  if not cp_files:
-    util.log('No checkpoint, starting from scratch.')
-    param_dict['init_model'] = Parser(args.param_file).get_result()
-  else:
-    cp_file = sorted(cp_files, key=os.path.getmtime)[-1]
-    util.log('Loading from checkpoint file: %s', cp_file)
-    param_dict['init_model'] = util.load(cp_file)
+  #create a checkpoint dumper
+  image_shape = (param_dict['image_color'], param_dict['image_size'], param_dict['image_size'], param_dict['batch_size'])
+  param_dict['image_shape'] = image_shape
+  cp_dumper = CheckpointDumper(param_dict['checkpoint_dir'], param_dict['test_id'])
+  param_dict['checkpoint_dumper'] = cp_dumper
 
+  #create the init_model
+  init_model = cp_dumper.get_checkpoint()
+  if init_model is None:
+    init_model = parse_config_file(args.param_file)
+  param_dict['init_model'] = init_model
+
+  #create train dataprovider and test dataprovider
+  dp_class = DataProvider.get_by_name(param_dict['data_provider'])
+  train_dp = dp_class(param_dict['data_dir'], param_dict['train_range'])
+  test_dp = dp_class(param_dict['data_dir'], param_dict['test_range'])
+  param_dict['train_dp'] = train_dp
+  param_dict['test_dp'] = test_dp
+
+
+  #get all extra information
   param_dict['num_epoch'] = args.num_epoch
+  num_batch = util.string_to_int_list(args.num_batch)
+  if len(num_batch) == 1:
+    param_dict['num_batch'] = num_batch[0]
+  else:
+    param_dict['num_batch'] = num_batch
+
+  param_dict['num_group_list']  = util.string_to_int_list(args.num_group_list)
+  param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
+
+
   if rank == 0:
     trainer = ServerTrainer(**param_dict)
   else:
