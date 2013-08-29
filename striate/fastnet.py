@@ -11,19 +11,18 @@ from striate.util import timer
 from virtual import virtual_array, Area
 import numpy as np
 import sys
-  
+
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 
 class FastNet(object):
-  def __init__(self, learningRate, imgShape, numOutput, init_model = None):
+  def __init__(self, learningRate, imgShape, init_model = None):
     self.learningRate = learningRate
     self.numColor, self.imgSize, _ , self.batchSize = imgShape
     self.imgShapes = [imgShape]
     self.inputShapes = [(self.numColor * (self.imgSize ** 2), self.batchSize)]
     print self.inputShapes
-    self.numOutput = numOutput
     self.layers = []
     self.outputs = []
     self.grads = []
@@ -71,10 +70,7 @@ class FastNet(object):
 
     self.outputs.append(gpuarray.zeros((row, col), dtype=np.float32))
     self.grads.append(gpuarray.zeros(self.inputShapes[-2], dtype=np.float32))
-    util.log('%s', self.outputs[-1].shape)
-    util.log('%s', self.grads[-1].shape)
-    print >> sys.stderr,  'append a', layer.type, 'layer', layer.name, 'to network'
-    print >> sys.stderr,  'the output of the layer is', outputShape
+    print >> sys.stderr,  '%s[%s]:%s' % (layer.name, layer.type, outputShape)
 
   def del_layer(self):
     name = self.layers[-1]
@@ -260,6 +256,11 @@ class FastNet(object):
   def get_report(self):
     pass
 
+  def get_image_shape(self):
+    return self.imgShaps[0]
+
+  def get_learning_rate(self):
+    return self.learningRate
 
   def get_summary(self):
     sum = []
@@ -270,8 +271,8 @@ class FastNet(object):
 
 
 class AdaptiveFastNet(FastNet):
-  def __init__(self, learningRate, imgShape, numOutput, train, test, init_model):
-    FastNet.__init__(self, learningRate, imgShape, numOutput, init_model)
+  def __init__(self, learningRate, imgShape, train, test, init_model):
+    FastNet.__init__(self, learningRate, imgShape, init_model)
     self.train_data, self.train_label = train
     self.test_data, self.test_label = test
     self.adjust_info = [(self.learningRate, 0, 0)]

@@ -1,6 +1,6 @@
 from PIL import Image
 from pycuda import gpuarray, driver
-from cuda_kernel import gpu_partial_copy_to, print_matrix
+from striate.cuda_kernel import gpu_partial_copy_to, print_matrix
 from os.path import basename
 from striate import util
 import Queue
@@ -49,6 +49,18 @@ class DataProvider(object):
 
   def copy_to_GPU(self):
       self.data_on_GPU = gpuarray.to_gpu(self.data.astype(np.float32))
+
+  def reset(self):
+    self.curr_batch_index = 0
+    self.curr_batch = None
+    self.curr_epoch = 1
+    self.data = None
+
+    random.shuffle(self.batch_range)
+    self.data_on_GPU = None
+    self.data = None
+    self.labels = None
+    
 
   def get_next_index(self):
     self.curr_batch_index = (self.curr_batch_index + 1) % len(self.batch_range)
@@ -107,6 +119,7 @@ class ParallelDataProvider(DataProvider):
     self._reader = None
     self._batch_return = None
     self._data_queue = Queue.Queue(1)
+    self._command_queue = Queue.Queue(1)
     self.reserved_epoch = 0
     self.reserved_labels = None
     self.reserved_data_on_GPU = None
@@ -116,20 +129,36 @@ class ParallelDataProvider(DataProvider):
     self._reader = threading.Thread(target=self.run_in_back)
     self._reader.setDaemon(True)
     self._reader.start()
+    self._command_queue.put(1)
+
+  def reset(self):
+    DataProvider.reset(self)
+    self._reader = None
+    self._batch_return = None
+    self._data_queue = Queue.Queue(1)
+    self._command_queue = Queue.Queue(1)
+    self.reserved_epoch = 0
+    self.reserved_labels = None
+    self.reserved_data_on_GPU = None
+
 
   def run_in_back(self):
     while 1:
+      self._command_queue.get()
       self._get_next_batch()
       self._data_queue.put(1)
 
   def _fill_reserved_data(self):
-    while self._data_queue.qsize() == 0:
-      time.sleep(0.001)
+    self._data_queue.get()
+    print self.labels.shape
     self.copy_to_GPU()
     self.reserved_epoch = self.curr_epoch
     self.reserved_labels = self.labels.copy()
     self.reserved_data_on_GPU = self.data_on_GPU.copy()
-    self._data_queue.get()
+    print self.reserved_labels.shape
+    print self.reserved_data_on_GPU.shape
+    assert self.reserved_data_on_GPU.shape[1] == self.reserved_labels.shape[0]
+    self._command_queue.put(1)
 
   def get_next_batch(self, batch_size):
     if self._reader is None:
@@ -139,7 +168,7 @@ class ParallelDataProvider(DataProvider):
       self._fill_reserved_data()
 
     height, width = self.reserved_data_on_GPU.shape
-    if self.index + batch_size >  width:
+    if self.index + batch_size >=  width:
       labels = self.reserved_labels[self.index:]
       width = width - self.index
       data = gpuarray.zeros((height, width), dtype = np.float32)
@@ -356,6 +385,8 @@ class IntermediateDataProvider(ParallelDataProvider):
     self.labels = labels
     data = np.require(data, requirements='C', dtype=np.float32)
     self.data = data
+    print self.labels.shape
+    print self.data.shape
     #return data, labels, self.curr_epoch
 
 

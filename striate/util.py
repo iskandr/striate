@@ -72,6 +72,7 @@ def isinteger(value):
     return False
 
 def string_to_int_list(str):
+  if str is None: return []
   str = str.strip()
   if str.find('-') != -1:
     f = int(str[0:str.find('-')])
@@ -86,6 +87,7 @@ def string_to_int_list(str):
     return [elt]
 
 def string_to_float_list(str):
+  if str is None: return []
   str = str.strip()
 
   if str.startswith('['):

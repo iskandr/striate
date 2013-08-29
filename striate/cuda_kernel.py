@@ -798,7 +798,11 @@ def logreg_cost_col_reduce(mat, label, cost):
   timer.start()
   mh, mw = mat.shape
   vh, vw = label.shape
-  assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
+  #assert(vh == 1 and vw == mw or vw == 1 and vh == mw)
+  if (vh != 1 or vw != mw)  and (vw != 1 or vh != mw):
+    log('%s ==> %s', mat.shape, label.shape)
+    assert False
+
 
   block = (mw, 1, 1)
   grid = (1, 1)
