@@ -40,7 +40,6 @@ class DataDumper(object):
     for k in self.data[0].keys():
       items = [d[k] for d in self.data]
       out[k] = np.concatenate(items, axis=0)
-      print out[k].shape
 
     with open('%s.%d' % (self.target_path, self.count), 'w') as f:
       cPickle.dump(out, f, -1)
@@ -125,8 +124,8 @@ class Trainer:
     pass
 
   def init_output_dumper(self):
-    self.train_dumper = DataDumper(self.train_output_filename)
-    self.test_dumper = DataDumper(self.test_output_filename)
+    self.train_dumper = None #DataDumper(self.train_output_filename)
+    self.test_dumper = None #DataDumper(self.test_output_filename)
 
 
   def init_data_provider(self):
@@ -278,7 +277,7 @@ class MiniBatchTrainer(Trainer):
     self.num_epoch = 100000
 
   def should_continue_training(self):
-    return self.curr_batch <= self.num_batch
+    return self.curr_batch < self.num_batch
 
 
 class AutoStopTrainer(Trainer):
@@ -409,7 +408,7 @@ class ImageNetLayerwisedTrainer(Trainer):
 
       layers = self.curr_model['model_state']['layers']
       model = [stack[0], stack[1], layers[-2], layers[-1]]
-      
+
       train_dp_old = self.train_dp
       test_dp_old = self.test_dp
       self.init_subnet_data_provider()
@@ -436,7 +435,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       layers.extend(self.net.get_dumped_layers())
 
       self.train_dp = train_dp_old
-      self.test_dp = test_dp_old
+      self.test_dp = test_dp_olm
 
       #for layer in self.curr_model['model_state']['layers'][:-2]:
       #  layer['disableBprop'] = True
@@ -446,128 +445,119 @@ class ImageNetLayerwisedTrainer(Trainer):
       #self.curr_model['model_state']['layers'].insert(-2, stack[0])
       #self.curr_model['model_state']['layers'].insert(-2, stack[1])
 
-    
+
       self.init_output_dumper()
       self.init_data_provider()
       self.net = FastNet(self.learning_rate, self.image_shape,  init_model = self.curr_model)
       Trainer.train(self)
 
 
-#class ImageNetCatewisedTrainer(MiniBatchTrainer):
-#  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-#      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
-#      init_model, num_caterange_list, adjust_freq = 100, factor = 1.0):
-#    # no meaning
-#    assert len(num_caterange_list) == len(num_minibatch) and num_caterange_list[-1] == 1000
-#
-#    self.init_output = num_caterange_list[0]
-#    self.range_list = num_caterange_list[1:]
-#    self.train_minibatch_list  = num_minibatch[1:]
-#
-#    fc = init_model[-2]
-#    fc['outputSize'] = self.init_output
-#
-#    self.learning_rate = learning_rate[0]
-#    self.learning_rate_list = learning_rate[1:]
-#
-#    MiniBatchTrainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range,
-#        test_range, test_freq, save_freq, batch_size, num_minibatch[0], image_size, image_color,
-#        self.learning_rate,  init_model = init_model)
-#
-#  def init_data_provider(self):
-#    ''' we begin with 100 categories'''
-#    self.set_category_range(self.init_output)
-#
-#  def set_category_range(self, r):
-#    dp = DataProvider.get_by_name(self.data_provider)
-#    self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
-#    self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
-#
-#
-#  def train(self):
-#    MiniBatchTrainer.train(self)
-#
-#    for i, cate in enumerate(self.range_list):
-#      self.set_category_range(cate)
-#      self.curr_batch = self.curr_epoch = 0
-#      self.num_minibatch = self.train_minibatch_list[i]
-#
-#      model = load(self.checkpoint_file)
-#      layers = model['model_state']['layers']
-#
-#      fc = layers[-2]
-#      fc['weight'] = None
-#      fc['bias'] = None
-#      fc['weightIncr'] = None
-#      fc['biasIncr'] = None
-#      #for l in layers:
-#      #  if l['type'] == 'fc':
-#      #    l['weight'] = None
-#      #    l['bias'] = None
-#      #    l['weightIncr'] = None
-#      #    l['biasIncr'] = None
-#
-#      #fc = layers[-2]
-#      fc['outputSize'] = cate
-#
-#      self.learning_rate = self.learning_rate_list[i]
-#      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
-#
-#      self.net.clear_weight_incr()
-#      MiniBatchTrainer.train(self)
-#
-#
-#
-#
-#class ImageNetCateGroupTrainer(MiniBatchTrainer):
-#  def __init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-#      test_freq, save_freq, batch_size, num_minibatch, image_size, image_color, learning_rate,
-#      num_group_list, init_model, adjust_freq = 100, factor = 1.0):
-#
-#    self.train_minibatch_list = num_minibatch[1:]
-#    self.num_group_list = num_group_list[1:]
-#    self.learning_rate_list = learning_rate[1:]
-#
-#    layers = init_model
-#    fc = layers[-2]
-#    fc['outputSize'] = num_group_list[0]
-#
-#    MiniBatchTrainer.__init__(self, test_id, data_dir, data_provider, checkpoint_dir, train_range, test_range,
-#        test_freq, save_freq, batch_size, num_minibatch[0], image_size, image_color, learning_rate[0], init_model = init_model)
-#
-#
-#  def set_num_group(self, n):
-#    dp = DataProvider.get_by_name(self.data_provider)
-#    self.train_dp = dp(self.data_dir, self.train_range, n)
-#    self.test_dp = dp(self.data_dir, self.test_range, n)
-#
-#  def init_data_provider(self):
-#    self.set_num_group(self.n_out)
-#
-#  def train(self):
-#    MiniBatchTrainer.train(self)
-#
-#    for i, group in enumerate(self.num_group_list):
-#      self.set_num_group(group)
-#      self.curr_batch = self.curr_epoch = 0
-#      self.num_minibatch = self.train_minibatch_list[i]
-#
-#      model = load(self.checkpoint_file)
-#      layers = model['model_state']['layers']
-#
-#      fc = layers[-2]
-#      fc['outputSize'] = group
-#      fc['weight'] = None
-#      fc['bias'] = None
-#      fc['weightIncr'] = None
-#      fc['biasIncr'] = None
-#
-#      self.learning_rate = self.learning_rate_list[i]
-#      self.net = FastNet(self.learning_rate, self.image_shape, self.n_out, init_model = model)
-#
-#      self.net.clear_weight_incr()
-#      MiniBatchTrainer.train(self)
-#
+class ImageNetCatewisedTrainer(MiniBatchTrainer):
+  def _finish_init(self):
+    assert len(self.num_caterange_list) == len(self.num_batch) and self.num_caterange_list[-1] == 1000
+    self.num_batch_list  = self.num_batch[1:]
+    self.num_batch = self.num_batch[0]
+
+    init_output = self.num_caterange_list[0]
+    self.num_caterange_list = self.num_caterange_list[1:]
+
+    fc = self.init_model[-2]
+    fc['outputSize'] = init_output
+
+    self.learning_rate_list = self.learning_rate[1:]
+    self.learning_rate = self.learning_rate[0]
+
+    self.set_category_range(init_output)
+    self.net = FastNet(self.learning_rate, self.image_shape, init_model = self.init_model)
+    MiniBatchTrainer._finish_init(self)
+
+
+  def set_category_range(self, r):
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.train_range, category_range = range(r))
+    self.test_dp = dp(self.data_dir, self.test_range, category_range = range(r))
+
+
+  def train(self):
+    MiniBatchTrainer.train(self)
+
+    for i, cate in enumerate(self.num_caterange_list):
+      self.set_category_range(cate)
+      self.curr_batch = self.curr_epoch = 0
+      self.num_batch = self.num_batch_list[i]
+
+      model = self.checkpoint_dumper.get_checkpoint()
+      layers = model['model_state']['layers']
+
+      fc = layers[-2]
+      fc['weight'] = None
+      fc['bias'] = None
+      fc['weightIncr'] = None
+      fc['biasIncr'] = None
+      #for l in layers:
+      #  if l['type'] == 'fc':
+      #    l['weight'] = None
+      #    l['bias'] = None
+      #    l['weightIncr'] = None
+      #    l['biasIncr'] = None
+
+      #fc = layers[-2]
+      fc['outputSize'] = cate
+
+      self.learning_rate = self.learning_rate_list[i]
+      self.net = FastNet(self.learning_rate, self.image_shape, init_model = model)
+
+      self.net.clear_weight_incr()
+      MiniBatchTrainer.train(self)
+
+
+
+class ImageNetCateGroupTrainer(MiniBatchTrainer):
+  def _finish_init(self):
+    self.num_batch_list = self.num_batch[1:]
+    self.num_batch = self.num_batch[0]
+    self.learning_rate_list = self.learning_rate[1:]
+    self.learning_rate = self.learning_rate[0]
+
+    layers = self.init_model
+    fc = layers[-2]
+    fc['outputSize'] = self.num_group_list[0]
+    self.num_group_list = self.num_group_list[1:]
+
+    self.set_num_group(fc['outputSize'])
+    self.net = FastNet(self.learning_rate, self.image_shape, init_model = self.init_model)
+    MiniBatchTrainer._finish_init(self)
+
+  def set_num_group(self, n):
+    dp = DataProvider.get_by_name(self.data_provider)
+    self.train_dp = dp(self.data_dir, self.train_range, n)
+    self.test_dp = dp(self.data_dir, self.test_range, n)
+
+
+  def train(self):
+    MiniBatchTrainer.train(self)
+
+    for i, group in enumerate(self.num_group_list):
+      self.set_num_group(group)
+      self.curr_batch = self.curr_epoch = 0
+      self.num_batch = self.num_batch_list[i]
+
+      model = self.checkpoint_dumper.get_checkpoint()
+      layers = model['model_state']['layers']
+
+      fc = layers[-2]
+      fc['outputSize'] = group
+      fc['weight'] = None
+      fc['bias'] = None
+      fc['weightIncr'] = None
+      fc['biasIncr'] = None
+
+      self.learning_rate = self.learning_rate_list[i]
+      self.net = FastNet(self.learning_rate, self.image_shape, init_model = model)
+
+      self.net.clear_weight_incr()
+      MiniBatchTrainer.train(self)
+
 
 def get_trainer_by_name(name, param_dict):
   net = FastNet(param_dict['learning_rate'], param_dict['image_shape'], init_model = None)

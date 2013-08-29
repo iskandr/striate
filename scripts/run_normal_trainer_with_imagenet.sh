@@ -14,5 +14,5 @@ python ~/striate/striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer minibatch \
-  --num_minibatch 100000000 \
+  --num_batch 100000000 \
   $@

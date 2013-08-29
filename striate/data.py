@@ -150,13 +150,10 @@ class ParallelDataProvider(DataProvider):
 
   def _fill_reserved_data(self):
     self._data_queue.get()
-    print self.labels.shape
     self.copy_to_GPU()
     self.reserved_epoch = self.curr_epoch
     self.reserved_labels = self.labels.copy()
     self.reserved_data_on_GPU = self.data_on_GPU.copy()
-    print self.reserved_labels.shape
-    print self.reserved_data_on_GPU.shape
     assert self.reserved_data_on_GPU.shape[1] == self.reserved_labels.shape[0]
     self._command_queue.put(1)
 
@@ -350,13 +347,13 @@ class CifarDataProvider(ParallelDataProvider):
 
 class ImageNetCateGroupDataProvider(ImageNetDataProvider):
   TOTAL_CATEGORY = 1000
-  def __init__(self, data_dir, batch_range, num_group, batch_size=128):
+  def __init__(self, data_dir, batch_range, num_group = 100, batch_size=128):
     ImageNetDataProvider.__init__(self, data_dir, batch_range)
     self.num_group = num_group
 
   def _get_next_batch(self):
-    data = ImageNetDataProvider._get_next_batch(self)
-    labels = data.labels / (ImageNetCateGroupDataProvider.TOTAL_CATEGORY / self.num_group)
+    ImageNetDataProvider._get_next_batch(self)
+    labels = self.labels / (ImageNetCateGroupDataProvider.TOTAL_CATEGORY / self.num_group)
     labels = labels.astype(np.int).astype(np.float)
     self.labels = labels
     #return data.data, labels, data.epoch
@@ -385,8 +382,6 @@ class IntermediateDataProvider(ParallelDataProvider):
     self.labels = labels
     data = np.require(data, requirements='C', dtype=np.float32)
     self.data = data
-    print self.labels.shape
-    print self.data.shape
     #return data, labels, self.curr_epoch
 
 
