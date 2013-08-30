@@ -60,7 +60,7 @@ class DataProvider(object):
     self.data_on_GPU = None
     self.data = None
     self.labels = None
-    
+
 
   def get_next_index(self):
     self.curr_batch_index = (self.curr_batch_index + 1) % len(self.batch_range)
@@ -393,12 +393,17 @@ DataProvider.register_data_provider('intermediate', IntermediateDataProvider)
 
 if __name__ == "__main__":
   data_dir = '/ssd/nn-data/cifar-10.old/'
-  dp = CifarDataProvider(data_dir, range(1, 40))
+  dp = CifarDataProvider(data_dir, [1])
   batch_size = 128
   # data_dir = '/hdfs/cifar/data/cifar-10-python/'
   # dp = DataProvider(data_dir, [1, 2, 3, 4, 5 ])
+  data_list = []
   for i in range(11000):
     data = dp.get_next_batch(batch_size)
-    print data.data.shape, data.labels.shape, data.epoch
-    data = data.data
-    print_matrix(data, 'data')
+    data = data.data.get()
+    data_list.append(data)
+
+    if data.shape[1] != batch_size:
+      break
+  data = np.concatenate(data_list, axis = 1)
+  print_matrix(data, 'data')

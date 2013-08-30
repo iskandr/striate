@@ -5,7 +5,7 @@
 python ./striate/trainer.py \
   --data_dir /ssd/nn-data/cifar-10.old \
   --data_provider cifar10 \
-  --param_file ~/striate/striate/fastcifar.cfg \
+  --param_file ~/striate/config/cifar_from_imagenet.cfg \
   --train_range 1-40 \
   --test_range 40-48 \
   --save_freq 50 \
@@ -15,5 +15,5 @@ python ./striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer normal \
-  --num_epoch 50 \
+  --num_epoch 20 \
   $@

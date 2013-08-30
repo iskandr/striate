@@ -17,12 +17,16 @@ import sys
 import time
 
 class DataDumper(object):
-  def __init__(self, target_path):
+  def __init__(self, target_path, max_mem_size = 500e5):
     self.target_path = target_path
     self.data = []
     self.sz = 0
     self.count = 0
-    self.max_mem_size = 500e5
+    self.max_mem_size = max_mem_size
+
+    util.log('dumper establised')
+    util.log('target path:    %s', self.target_path)
+    util.log('max_memory:     %s', self.max_mem_size)
 
   def add(self, data):
     for k, v in data.iteritems():
@@ -41,10 +45,11 @@ class DataDumper(object):
       items = [d[k] for d in self.data]
       out[k] = np.concatenate(items, axis=0)
 
-    with open('%s.%d' % (self.target_path, self.count), 'w') as f:
+    filename = '%s.%d' % (self.target_path, self.count)
+    with open(filename, 'w') as f:
       cPickle.dump(out, f, -1)
 
-    util.log('Wrote layer dump.')
+    util.log('Wrote layer dump to %s', filename)
     self.data = []
     self.sz = 0
     self.count += 1
@@ -63,15 +68,15 @@ class CheckpointDumper(object):
     self.test_id = test_id
     self.regex = re.compile('^test%d-(\d+)$' % self.test_id)
 
-    cp_pattern = self.checkpoint_dir + '/test%d$' % self.test_id
-    cp_files = glob.glob('%s*' % cp_pattern)
+    cp_pattern = self.checkpoint_dir + '/test%d-*' % self.test_id
+    cp_files = glob.glob(cp_pattern)
 
     if not cp_files:
       self.checkpoint = None
       self.checkpoint_file = None
     else:
       self.checkpoint_file = sorted(cp_files, key=os.path.getmtime)[-1]
-      util.log('Loading from checkpoint file: %s', cp_file)
+      util.log('Loading from checkpoint file: %s', self.checkpoint_file)
       self.checkpoint = util.load(self.checkpoint_file)
 
   def get_checkpoint(self):
@@ -114,8 +119,12 @@ class Trainer:
       self.train_outputs = []
       self.test_outputs = []
 
-    self.train_output_filename = '/scratch/justin/imagenet-pickle/train-data.pickle'
-    self.test_output_filename = '/scratch/justin/imagenet-pickle/test-data.pickle'
+    if self.output_dir:
+      self.train_output_filename = os.path.join(self.output_dir, 'train-data.pickle')
+      self.test_output_filename = os.path.join(self.output_dir, 'test-data.pickle')
+    else:
+      self.train_output_filename = ''
+      self.test_output_filename = ''
     self.init_output_dumper()
     self._finish_init()
 
@@ -124,8 +133,10 @@ class Trainer:
     pass
 
   def init_output_dumper(self):
-    self.train_dumper = None #DataDumper(self.train_output_filename)
-    self.test_dumper = None #DataDumper(self.test_output_filename)
+    if self.train_output_filename:
+      self.train_dumper = DataDumper(self.train_output_filename)
+    if self.test_output_filename:
+      self.test_dumper = DataDumper(self.test_output_filename)
 
 
   def init_data_provider(self):
@@ -395,7 +406,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     pprint.pprint(self.stack)
 
     self.layerwised = True
-    self.num_epoch = 3
+    self.num_epoch = 1
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
   def report(self):
@@ -453,7 +464,7 @@ class ImageNetLayerwisedTrainer(Trainer):
 
       self.curr_batch = self.curr_epoch = 0
 
-      self.num_epoch = old_num_epoch - self.num_epoch
+      self.num_epoch = old_num_epoch
 
       self.image_shape = image_shape_old
       del layers[-1], layers[-1]
@@ -613,6 +624,7 @@ if __name__ == '__main__':
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
   parser.add_argument('--num_batch', help = 'The number of minibatch you want to train(num*1000)')
+  parser.add_argument('--output_dir', help = 'The directory where to dumper input for last fc layer while training', default='')
 
   args = parser.parse_args()
 
@@ -686,7 +698,7 @@ if __name__ == '__main__':
 
   param_dict['num_group_list']  = util.string_to_int_list(args.num_group_list)
   param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
-
+  param_dict['output_dir'] = args.output_dir
 
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
