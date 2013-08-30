@@ -58,6 +58,79 @@ class DataDumper(object):
 
 
 
+
+
+class MemoryDataHolder(object):
+  def __init__(self, single_memory_size = 50e6, total_memory_size = 2e9):
+    self.single_memory_size = single_memory_size
+    self.total_memory_size = total_memory_size
+    self.single_data_size = 0
+    self.total_data_size = 0
+    self.count = 0
+    self.data = []
+    self.memory_chunk = []
+
+    util.log('memory data holder establised')
+    util.log('total memory size:    %s', self.total_memory_size)
+    util.log('single memory size:   %s', self.single_memory_size)
+
+
+  def add(self, data):
+    for k, v in data.iteritems():
+      self.single_data_size += v.nbytes
+      self.total_data_size += v.nbytes
+    self.data.append(data)
+
+    if self.total_data_size > self.total_memory_size:
+      self.cut_off_chunk()
+
+    if self.single_data_size > self.single_memory_size:
+      self.flush()
+
+
+  def flush(self):
+    if self.single_data_size == 0:
+      return
+
+    dic = {}
+    for k in self.data[0].keys():
+      items= [d[k] for d in self.data]
+      dic[k] = np.concatenate(items, axis = 0)
+
+    self.memory_chunk.append(dic)
+
+    util.log('add another memory chunk')
+    util.log('memory chunk size:    %s', self.single_data_size)
+    util.log('total data size:    %s', self.total_data_size)
+
+    self.data = []
+    self.single_data_size = 0
+    self.count += 1
+
+  def cut_off_chunk(self):
+    if len(self.memory_chunk) == 0:
+      util.log('There is no chunk to cut off')
+      return
+
+    size = 0
+    for k, v, in self.memory_chunk[0].iteritems():
+      size += self.memory_chunk[0][k].nbytes
+
+    del self.memory_chunk[0]
+    self.total_data_size -= size
+    util.log('drop off the first memory chunk')
+    util.log('droped chunk size:    %s', size)
+    util.log('total data size:      %s', self.total_data_size)
+
+  def finish_push(self):
+    self.flush()
+
+  def get_count(self):
+    return self.count
+
+
+
+
 class CheckpointDumper(object):
   def __init__(self, checkpoint_dir, test_id):
     self.checkpoint_dir = checkpoint_dir
@@ -128,7 +201,6 @@ class Trainer:
     self.init_output_dumper()
     self._finish_init()
 
-
   def _finish_init(self):
     pass
 
@@ -137,6 +209,8 @@ class Trainer:
       self.train_dumper = DataDumper(self.train_output_filename)
     if self.test_output_filename:
       self.test_dumper = DataDumper(self.test_output_filename)
+    #self.train_dumper = MemoryDataHolder()
+    #self.test_dumper = MemoryDataHolder()
 
 
   def init_data_provider(self):
@@ -423,6 +497,9 @@ class ImageNetLayerwisedTrainer(Trainer):
     self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
     count = self.test_dumper.get_count()
     self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
+    #dp = DataProvider.get_by_name('memory')
+    #self.train_dp = dp(self.train_dumper)
+    #self.test_dp = dp(self.test_dumper)
 
   def train(self):
     Trainer.train(self)
@@ -443,6 +520,8 @@ class ImageNetLayerwisedTrainer(Trainer):
         self.num_epoch = self.final_num_epoch
 
       layers = self.curr_model['model_state']['layers']
+      stack[0]['epsW'] *= self.learning_rate
+      stack[0]['epsB'] *= self.learning_rate
       model = [stack[0], stack[1], layers[-2], layers[-1]]
 
       train_dp_old = self.train_dp
@@ -456,7 +535,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       shape = self.curr_model['model_state']['layers'][-3]['outputShape']
       size= shape[0] * shape[1] * shape[2]
       self.image_shape = (size, 1, 1, self.batch_size)
-      self.net = FastNet(self.learning_rate, self.image_shape, init_model = model)
+      self.net = FastNet(1.0, self.image_shape, init_model = model)
 
       old_num_epoch = self.num_epoch
       self.num_epoch = 1
@@ -471,7 +550,7 @@ class ImageNetLayerwisedTrainer(Trainer):
       layers.extend(self.net.get_dumped_layers())
 
       self.train_dp = train_dp_old
-      self.test_dp = test_dp_olm
+      self.test_dp = test_dp_old
 
       #for layer in self.curr_model['model_state']['layers'][:-2]:
       #  layer['disableBprop'] = True
@@ -619,7 +698,7 @@ if __name__ == '__main__':
 
 
   # extra argument
-  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch']
+  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch', 'output_dir']
   parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)

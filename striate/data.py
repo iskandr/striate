@@ -385,10 +385,37 @@ class IntermediateDataProvider(ParallelDataProvider):
     #return data, labels, self.curr_epoch
 
 
+
+class MemoryDataProvider(ParallelDataProvider):
+  def __init__(self, data_holder, batch_range = None, data_name = 'fc'):
+    if batch_range is None:
+      batch_range  = range(data_holder.get_count())
+
+    ParallelDataProvider.__init__(self, data_dir = '.', batch_range = batch_range)
+    self.data_holder = data_holder
+    self.data_holder.finish_push()
+    self.data_list = self.data_holder.memory_chunk
+    self.data_name = data_name
+
+  def _get_next_batch(self):
+    self.get_next_index()
+
+    if self.curr_batch_index == 0:
+      random.shuffle(self.batch_range)
+      self.curr_epoch += 1
+    self.curr_batch = self.batch_range[self.curr_batch_index]
+
+    data = self.data_list[self.curr_batch]
+    self.labels = data['labels']
+    self.data = np.require(data[self.data_name].transpose(), requirements='C', dtype=np.float32)
+
+
+
 DataProvider.register_data_provider('cifar10', CifarDataProvider)
 DataProvider.register_data_provider('imagenet', ImageNetDataProvider)
 DataProvider.register_data_provider('imagenetcategroup', ImageNetCateGroupDataProvider)
 DataProvider.register_data_provider('intermediate', IntermediateDataProvider)
+DataProvider.register_data_provider('memory', MemoryDataProvider)
 
 
 if __name__ == "__main__":
