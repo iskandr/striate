@@ -388,12 +388,12 @@ class IntermediateDataProvider(ParallelDataProvider):
 
 class MemoryDataProvider(ParallelDataProvider):
   def __init__(self, data_holder, batch_range = None, data_name = 'fc'):
+    data_holder.finish_push()
     if batch_range is None:
       batch_range  = range(data_holder.get_count())
 
     ParallelDataProvider.__init__(self, data_dir = '.', batch_range = batch_range)
     self.data_holder = data_holder
-    self.data_holder.finish_push()
     self.data_list = self.data_holder.memory_chunk
     self.data_name = data_name
 

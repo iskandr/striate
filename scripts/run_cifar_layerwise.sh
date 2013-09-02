@@ -1,9 +1,8 @@
 #!/bin/sh
 
-
 python ~/striate/striate/trainer.py \
   --data_dir /ssd/nn-data/cifar-10.old/ \
-  --param_file ~/striate/config/cifar_from_imagenet.cfg \
+  --param_file ~/striate/config/cifar_long_fc.cfg \
   --data_provider cifar10 \
   --train_range 1-40 \
   --test_range 41-48 \
@@ -14,5 +13,7 @@ python ~/striate/striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer layerwise \
-  --num_epoch 15 \
+  --num_epoch 30 \
   $@
+
+#--output_dir /scratch1/justin/cifar-pickle/ \

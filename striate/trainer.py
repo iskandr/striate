@@ -61,7 +61,7 @@ class DataDumper(object):
 
 
 class MemoryDataHolder(object):
-  def __init__(self, single_memory_size = 50e6, total_memory_size = 2e9):
+  def __init__(self, single_memory_size = 50e6, total_memory_size = 4e9):
     self.single_memory_size = single_memory_size
     self.total_memory_size = total_memory_size
     self.single_data_size = 0
@@ -118,6 +118,7 @@ class MemoryDataHolder(object):
 
     del self.memory_chunk[0]
     self.total_data_size -= size
+    self.count -= 1
     util.log('drop off the first memory chunk')
     util.log('droped chunk size:    %s', size)
     util.log('total data size:      %s', self.total_data_size)
@@ -205,12 +206,16 @@ class Trainer:
     pass
 
   def init_output_dumper(self):
-    if self.train_output_filename:
-      self.train_dumper = DataDumper(self.train_output_filename)
-    if self.test_output_filename:
-      self.test_dumper = DataDumper(self.test_output_filename)
-    #self.train_dumper = MemoryDataHolder()
-    #self.test_dumper = MemoryDataHolder()
+    #if self.train_output_filename:
+    #  self.train_dumper = DataDumper(self.train_output_filename)
+    #else:
+    #  self.train_dumper = None
+    #if self.test_output_filename:
+    #  self.test_dumper = DataDumper(self.test_output_filename)
+    #else:
+    #  self.test_dumper = None
+    self.train_dumper = MemoryDataHolder()
+    self.test_dumper = MemoryDataHolder()
 
 
   def init_data_provider(self):
@@ -492,14 +497,14 @@ class ImageNetLayerwisedTrainer(Trainer):
     return self.curr_epoch <= self.num_epoch
 
   def init_subnet_data_provider(self):
-    dp = DataProvider.get_by_name('intermediate')
-    count = self.train_dumper.get_count()
-    self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
-    count = self.test_dumper.get_count()
-    self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
-    #dp = DataProvider.get_by_name('memory')
-    #self.train_dp = dp(self.train_dumper)
-    #self.test_dp = dp(self.test_dumper)
+    #dp = DataProvider.get_by_name('intermediate')
+    #count = self.train_dumper.get_count()
+    #self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
+    #count = self.test_dumper.get_count()
+    #self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
+    dp = DataProvider.get_by_name('memory')
+    self.train_dp = dp(self.train_dumper)
+    self.test_dp = dp(self.test_dumper)
 
   def train(self):
     Trainer.train(self)

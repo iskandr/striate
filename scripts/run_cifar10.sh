@@ -15,5 +15,5 @@ python ./striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer normal \
-  --num_epoch 20 \
+  --num_epoch 30 \
   $@
