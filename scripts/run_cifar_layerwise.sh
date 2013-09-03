@@ -13,7 +13,6 @@ python ~/striate/striate/trainer.py \
   --batch_size 128 \
   --checkpoint_dir ~/striate/striate/checkpoint/ \
   --trainer layerwise \
+  --output_dir /scratch1/justin/cifar-pickle/ \
   --num_epoch 30 \
   $@
-
-#--output_dir /scratch1/justin/cifar-pickle/ \

@@ -192,7 +192,6 @@ class Trainer:
     else:
       self.train_outputs = []
       self.test_outputs = []
-
     if self.output_dir:
       self.train_output_filename = os.path.join(self.output_dir, 'train-data.pickle')
       self.test_output_filename = os.path.join(self.output_dir, 'test-data.pickle')
@@ -206,16 +205,16 @@ class Trainer:
     pass
 
   def init_output_dumper(self):
-    #if self.train_output_filename:
-    #  self.train_dumper = DataDumper(self.train_output_filename)
-    #else:
-    #  self.train_dumper = None
-    #if self.test_output_filename:
-    #  self.test_dumper = DataDumper(self.test_output_filename)
-    #else:
-    #  self.test_dumper = None
-    self.train_dumper = MemoryDataHolder()
-    self.test_dumper = MemoryDataHolder()
+    self.train_dumper = None
+    self.test_dumper = None
+    if self.output_method == 'disk':
+      if self.train_output_filename:
+        self.train_dumper = DataDumper(self.train_output_filename)
+      if self.test_output_filename:
+        self.test_dumper = DataDumper(self.test_output_filename)
+    elif self.output_method == 'memory':
+      self.train_dumper = MemoryDataHolder()
+      self.test_dumper = MemoryDataHolder()
 
 
   def init_data_provider(self):
@@ -485,7 +484,7 @@ class ImageNetLayerwisedTrainer(Trainer):
     pprint.pprint(self.stack)
 
     self.layerwised = True
-    self.num_epoch = 1
+    self.num_epoch = 2
     self.net = FastNet(self.learning_rate, self.image_shape, self.curr_model)
 
   def report(self):
@@ -497,14 +496,16 @@ class ImageNetLayerwisedTrainer(Trainer):
     return self.curr_epoch <= self.num_epoch
 
   def init_subnet_data_provider(self):
-    #dp = DataProvider.get_by_name('intermediate')
-    #count = self.train_dumper.get_count()
-    #self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
-    #count = self.test_dumper.get_count()
-    #self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
-    dp = DataProvider.get_by_name('memory')
-    self.train_dp = dp(self.train_dumper)
-    self.test_dp = dp(self.test_dumper)
+    if self.output_method == 'disk':
+      dp = DataProvider.get_by_name('intermediate')
+      count = self.train_dumper.get_count()
+      self.train_dp = dp(self.train_output_filename,  range(0, count), 'fc')
+      count = self.test_dumper.get_count()
+      self.test_dp = dp(self.test_output_filename, range(0, count), 'fc')
+    elif self.output_method == 'memory':
+      dp = DataProvider.get_by_name('memory')
+      self.train_dp = dp(self.train_dumper)
+      self.test_dp = dp(self.test_dumper)
 
   def train(self):
     Trainer.train(self)
@@ -703,12 +704,13 @@ if __name__ == '__main__':
 
 
   # extra argument
-  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch', 'output_dir']
+  extra_argument = ['num_group_list', 'num_caterange_list', 'num_epoch', 'num_batch', 'output_dir', 'output_method']
   parser.add_argument('--num_group_list', help = 'The list of the group you want to split the data to')
   parser.add_argument('--num_caterange_list', help = 'The list of category range you want to train')
   parser.add_argument('--num_epoch', help = 'The number of epoch you want to train', default = 30, type = int)
   parser.add_argument('--num_batch', help = 'The number of minibatch you want to train(num*1000)')
   parser.add_argument('--output_dir', help = 'The directory where to dumper input for last fc layer while training', default='')
+  parser.add_argument('--output_method', help = 'The method to hold the intermediate output', choices = ['memory', 'disk'], default = 'disk')
 
   args = parser.parse_args()
 
@@ -783,6 +785,7 @@ if __name__ == '__main__':
   param_dict['num_group_list']  = util.string_to_int_list(args.num_group_list)
   param_dict['num_caterange_list'] = util.string_to_int_list(args.num_caterange_list)
   param_dict['output_dir'] = args.output_dir
+  param_dict['output_method'] = args.output_method
 
 
   trainer = Trainer.get_trainer_by_name(trainer, param_dict)
