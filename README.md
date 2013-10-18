@@ -1,5 +1,5 @@
 **Striate has relocated**: The original Striate was a simple convnet written on top of Theano,
-meant for small-scale experiments. It has since expanded into both more useful and more confusing
+meant for small-scale experiments. It has since expanded into something both more useful and more confusing
 and now lives under new stewardship under the name [FastNet](https://github.com/rjpower/fastnet). 
 
 Striate
