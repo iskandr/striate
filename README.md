@@ -1,5 +1,10 @@
+**Striate has relocated**: The original Striate was a simple convnet written on top of Theano,
+meant for small-scale experiments. It has since expanded into both more useful and more confusing
+and now lives under new stewardship under the name [FastNet](https://github.com/rjpower/fastnet). 
+
 Striate
 =========
+
 A [convolutional neural network](http://yann.lecun.com/exdb/lenet/) framework, building on 
 top of the convolutional kernel code from [cuda-convnet](https://code.google.com/p/cuda-convnet/).
 
